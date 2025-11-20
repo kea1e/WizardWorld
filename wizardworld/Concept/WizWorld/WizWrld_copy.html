@@ -1,0 +1,2891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wizard's Quest</title>
+    <!-- Pixelated font for 8-bit feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <!-- Tone.js for sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive; /* Apply pixel font to body for buttons */
+            background-color: #1a1a2e; /* Darker background for atmosphere */
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column; /* Arrange vertically */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            image-rendering: pixelated; /* Ensure pixel art remains sharp */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            background-color: #2a2a4a; /* Dark blue-purple container */
+            border: 4px solid #4a4a7a; /* Matching border */
+            border-radius: 12px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            max-width: 95%; /* Allow it to be a bit wider */
+            width: 1064px; /* Adjusted width for new canvas size + padding */
+            box-sizing: border-box;
+            position: relative;
+            align-items: center; /* Center canvas */
+        }
+
+        canvas {
+            background-color: #1a1e24; /* Canvas background (will be overwritten by landscape) */
+            display: block;
+            border: 2px solid #4a4a7a;
+            border-radius: 8px;
+            width: 1024px; /* Fixed width for expanded game world */
+            height: 576px; /* Increased height for expanded game world (16:9 aspect) */
+            margin-bottom: 0; /* No margin below canvas as buttons are gone */
+            box-sizing: border-box;
+            image-rendering: pixelated; /* Ensure pixel art remains sharp on canvas */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        /* Message Box Styling - Adjusted for pixel art aesthetic */
+        .message-box-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); /* More opaque */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            border-radius: 12px;
+        }
+
+        .message-box {
+            background-color: #2a2a4a;
+            border: 4px solid #4a4a7a;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            max-width: 450px; /* Slightly wider */
+            width: 85%;
+            color: #e0e0e0;
+            position: relative;
+            font-family: 'Press Start 2P', cursive; /* Pixel font for message box */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .message-box h2 {
+            margin-top: 0;
+            color: #e6b800; /* Gold */
+            font-size: 1.5em; /* Adjusted font size */
+            margin-bottom: 20px;
+            text-shadow: 2px 2px #000; /* Pixelated text shadow */
+        }
+
+        .message-box p {
+            font-size: 0.9em; /* Adjusted font size */
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .message-box button {
+            background-color: #6a5acd;
+            color: white;
+            border: 2px solid #4b0082;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 0.8em; /* Adjusted font size */
+            cursor: pointer;
+            transition: background-color 0.1s ease;
+            box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
+        }
+
+        .message-box button:hover {
+            background-color: #7b68ee;
+            transform: translate(-1px, -1px);
+            box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- Message Box Template -->
+    <div id="messageBoxOverlay" class="message-box-overlay" style="display: none;">
+        <div class="message-box">
+            <h2 id="messageBoxTitle"></h2>
+            <p id="messageBoxContent"></p>
+            <button id="messageBoxOkButton">OK</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Game Constants
+        const CANVAS_WIDTH = 1024; // Expanded width
+        const CANVAS_HEIGHT = 576; // Expanded height
+        const TILE_SIZE = 32; // Size of each tile in pixels
+        const PLAYER_SIZE = 36; // Reduced player size for less bulk
+        const ENEMY_SIZE = 48;
+        const PLAYER_SPEED = 3;
+        const PROJECTILE_SPEED = 8; // Speed of spell projectiles
+        const ENEMY_ATTACK_DAMAGE = 5; // Base enemy attack damage
+        const ENEMY_ATTACK_RANGE = TILE_SIZE * 1.5; // Enemies can only attack within 1.5 tiles
+        const ENEMY_ATTACK_COOLDOWN = 1500; // 1.5 seconds cooldown between enemy attacks
+        const MAX_ENEMIES = 10; // Maximum number of enemies on the map at once (Increased from 5 to 10)
+        const MINI_MAP_SIZE = 150; // Size of the square mini-map
+        const ORB_RADIUS = 30; // Define orbRadius globally
+
+        // Player animation constants
+        const PLAYER_ANIMATION_SPEED = 100; // Milliseconds per frame
+        const PLAYER_WALK_FRAMES = 2; // Number of frames for walking animation
+
+        // Loot pickup constants
+        const PICKUP_RANGE = TILE_SIZE * 1.5; // Items are drawn to player within this range
+        const ITEM_PULL_SPEED = 4; // How fast items move towards the player
+
+        // Game Map (simple representation for now)
+        // 0: Grass, 1: Path, 2: Tree, 3: Obstacle (e.g., crate/barrel), 4: Water, 5: Mountain, 6: Rock
+        // New: 7: Castle Wall, 8: Hut
+        const gameMap = [];
+        const MAP_ROWS = 60; // Significantly larger map
+        const MAP_COLS = 80; // Significantly larger map
+
+        // Camera position (top-left corner of the viewport in world coordinates)
+        let cameraX = 0;
+        let cameraY = 0;
+
+        // Animation state for orbs and day/night cycle
+        let waveAnimationTime = 0;
+        // Adjusted gameTime increment for longer day/night cycle (2.5 minutes per phase)
+        // Full cycle (day + night) = 5 minutes = 300 seconds
+        // (2 * Math.PI) / (increment * 60 FPS) = 300 seconds
+        // increment = (2 * Math.PI) / (300 * 60) = (2 * Math.PI) / 18000 ≈ 0.000349
+        let gameTime = 0; // Represents time in a cycle, e.g., 0 to 2*Math.PI for a full day/night
+
+        // Initialize map with grass
+        for (let r = 0; r < MAP_ROWS; r++) {
+            gameMap.push(Array(MAP_COLS).fill(0));
+        }
+
+        // --- Item Definitions ---
+        const ARMOR_TYPES = {
+            HELMET: 'helmet',
+            CHESTPLATE: 'chestplate',
+            PANTS: 'pants',
+            BOOTS: 'boots'
+        };
+
+        const WEAPON_TYPES = {
+            SWORD: 'sword',
+            AXE: 'axe'
+        };
+
+        const ARMOR_DEFINITIONS = [
+            { name: "Worn Leather Helmet", type: ARMOR_TYPES.HELMET, healthBonus: 5, goldValue: 5, rarity: 'common' },
+            { name: "Iron Helmet", type: ARMOR_TYPES.HELMET, healthBonus: 10, goldValue: 15, rarity: 'uncommon' },
+            { name: "Steel Helmet", type: ARMOR_TYPES.HELMET, healthBonus: 15, goldValue: 25, rarity: 'rare' },
+
+            { name: "Ragged Tunic", type: ARMOR_TYPES.CHESTPLATE, healthBonus: 8, goldValue: 8, rarity: 'common' },
+            { name: "Chainmail Vest", type: ARMOR_TYPES.CHESTPLATE, healthBonus: 15, goldValue: 20, rarity: 'uncommon' },
+            { name: "Plate Chestplate", type: ARMOR_TYPES.CHESTPLATE, healthBonus: 25, goldValue: 40, rarity: 'rare' },
+
+            { name: "Torn Pants", type: ARMOR_TYPES.PANTS, healthBonus: 3, goldValue: 3, rarity: 'common' },
+            { name: "Leather Leggings", type: ARMOR_TYPES.PANTS, healthBonus: 7, goldValue: 10, rarity: 'uncommon' },
+            { name: "Steel Greaves", type: ARMOR_TYPES.PANTS, healthBonus: 12, goldValue: 20, rarity: 'rare' },
+
+            { name: "Old Boots", type: ARMOR_TYPES.BOOTS, healthBonus: 2, goldValue: 2, rarity: 'common' },
+            { name: "Sturdy Boots", type: ARMOR_TYPES.BOOTS, healthBonus: 5, goldValue: 8, rarity: 'uncommon' },
+            { name: "Plate Boots", type: ARMOR_TYPES.BOOTS, healthBonus: 10, goldValue: 18, rarity: 'rare' },
+        ];
+
+        const WEAPON_DEFINITIONS = [
+            { name: "Rusty Dagger", type: WEAPON_TYPES.SWORD, damage: 5, goldValue: 3, rarity: 'common' },
+            { name: "Wooden Sword", type: WEAPON_TYPES.SWORD, damage: 8, goldValue: 5, rarity: 'common' },
+            { name: "Stone Axe", type: WEAPON_TYPES.AXE, damage: 12, goldValue: 10, rarity: 'uncommon' },
+            { name: "Iron Sword", type: WEAPON_TYPES.SWORD, damage: 15, goldValue: 20, rarity: 'rare' },
+            { name: "Battle Axe", type: WEAPON_TYPES.AXE, damage: 20, goldValue: 35, rarity: 'rare' },
+            { name: "Legendary Blade", type: WEAPON_TYPES.SWORD, damage: 30, goldValue: 100, rarity: 'legendary' },
+        ];
+
+        // Define enemyTypes globally, now with baseHp and hpPerLevel for scaling
+        const DAY_ENEMY_DEFINITIONS = [
+            { name: "Forest Sprite", baseHp: 25, hpPerLevel: 5, damage: ENEMY_ATTACK_DAMAGE + 2, xpReward: 20, goldReward: 5, type: "sprite", moveSpeed: 1.2 },
+            { name: "Cave Slime", baseHp: 35, hpPerLevel: 7, damage: ENEMY_ATTACK_DAMAGE - 1, xpReward: 25, goldReward: 8, type: "slime", moveSpeed: 0.7 },
+            { name: "Goblin Scout", baseHp: 30, hpPerLevel: 6, damage: ENEMY_ATTACK_DAMAGE + 1, xpReward: 22, goldReward: 6, type: "goblin", moveSpeed: 1.3 }, // New enemy
+            { name: "Wild Boar", baseHp: 45, hpPerLevel: 9, damage: ENEMY_ATTACK_DAMAGE + 3, xpReward: 35, goldReward: 12, type: "boar", moveSpeed: 1.0 } // New enemy
+        ];
+
+        const NIGHT_ENEMY_DEFINITIONS = [
+            { name: "Stone Golem", baseHp: 40, hpPerLevel: 8, damage: ENEMY_ATTACK_DAMAGE, xpReward: 30, goldReward: 10, type: "golem", moveSpeed: 0.8 },
+            { name: "Shadow Bat", baseHp: 15, hpPerLevel: 4, damage: ENEMY_ATTACK_DAMAGE + 1, xpReward: 15, goldReward: 3, type: "bat", moveSpeed: 1.5 },
+            { name: "Skeleton Warrior", baseHp: 50, hpPerLevel: 10, damage: ENEMY_ATTACK_DAMAGE + 4, xpReward: 40, goldReward: 15, type: "skeleton", moveSpeed: 0.9 }, // New enemy
+            { name: "Ghostly Apparition", baseHp: 20, hpPerLevel: 6, damage: ENEMY_ATTACK_DAMAGE + 2, xpReward: 28, goldReward: 7, type: "ghost", moveSpeed: 1.1 } // New enemy
+        ];
+
+        // Game State
+        let player = {
+            x: 0, // Will be set after castle generation
+            y: 0, // Will be set after castle generation
+            hp: 100,
+            maxHp: 100,
+            level: 1,
+            xp: 0,
+            xpToNextLevel: 100,
+            gold: 0,
+            baseMeleeDamage: 5, // Base damage for unarmed attack
+            baseMeleeAoeRange: PLAYER_SIZE * 0.75, // Base AOE range
+            meleeAoePerLevel: TILE_SIZE * 0.2, // Increase AOE by 0.2 tiles per level
+            meleeAttackRange: PLAYER_SIZE * 0.75, // Will be updated dynamically
+            meleeAttackCooldown: 600, // 0.6 seconds cooldown
+            lastMeleeAttackTime: 0, // Timestamp of last melee attack
+            meleeLevel: 1, // New: Melee skill level
+            meleeXp: 0, // New: Melee XP
+            meleeXpToNextLevel: 50, // New: Melee XP to next level
+            spells: {
+                fireball: {
+                    level: 1,
+                    xp: 0,
+                    xpToNextLevel: 50,
+                    baseDamage: 10,
+                    requiredLevel: 1,
+                    key: '1', // Key for this spell
+                    cooldown: 500, // Decreased by 0.5 seconds (was 1000)
+                    lastCastTime: 0
+                },
+                iceShard: {
+                    level: 0, // Starts at level 0, unlocked at requiredLevel
+                    xp: 0,
+                    xpToNextLevel: 75,
+                    baseDamage: 15,
+                    requiredLevel: 3, // Unlocks at player level 3
+                    key: '2', // Key for this spell
+                    cooldown: 1000, // Decreased by 0.5 seconds (was 1500)
+                    lastCastTime: 0
+                }
+            },
+            isCasting: false, // New state for casting animation
+            castingSpellType: null, // Stores which spell is being cast
+            castAnimationTimer: 0, // Timer for how long the casting animation lasts
+            castAnimationDuration: 300, // Duration in ms
+            isMoving: false, // New state for movement animation
+            animationFrame: 0, // Current frame for animation
+            lastFrameTime: 0, // Timestamp of last frame update
+            isMeleeAttacking: false, // New: for melee animation
+            meleeAnimationTimer: 0, // New: for melee animation
+            meleeAnimationDuration: 200, // New: duration of swing animation
+            inventory: [], // Player's inventory
+            equipped: { // Equipped items
+                helmet: null,
+                chestplate: null,
+                pants: null,
+                boots: null,
+                weapon: null
+            }
+        };
+
+        let enemies = []; // Array to hold multiple enemies
+        let droppedItems = []; // Array to hold items dropped on the ground
+        let damageNumbers = []; // Array to hold floating damage numbers
+        let gameMessages = [];
+        const MAX_MESSAGES_ON_CANVAS = 5;
+
+        let projectile = null; // Stores projectile object for animation
+
+        // Bubbles for HP/XP orbs
+        let hpBubbles = [];
+        let xpBubbles = [];
+
+        // Keyboard input state
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            '1': false, // Key for Fireball
+            '2': false, // Key for Ice Shard
+            'e': false, // Key for Melee Attack
+            'r': false  // Key for Rest
+        };
+
+        // Canvas and Context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // Enable image smoothing for "realistic" graphics
+        ctx.imageSmoothingEnabled = false; // Reverted to false for 8-bit
+
+        // UI Elements (for message box only, rest handled by canvas drawing)
+        const messageBoxOverlay = document.getElementById('messageBoxOverlay');
+        const messageBoxTitle = document.getElementById('messageBoxTitle');
+        const messageBoxContent = document.getElementById('messageBoxContent');
+        const messageBoxOkButton = document.getElementById('messageBoxOkButton');
+
+        // --- Tone.js Sound Setup ---
+        // Create a simple synth for general sounds
+        const synth = new Tone.Synth().toDestination();
+        const hitSynth = new Tone.MembraneSynth().toDestination(); // For impacts
+        const pickupSynth = new Tone.PluckSynth().toDestination(); // For item pickups
+        const levelUpSynth = new Tone.MetalSynth().toDestination(); // For level ups
+
+        // New synths for specific spell sounds
+        // Modified fireSynth for a different sound
+        const fireSynth = new Tone.NoiseSynth({
+            noise: { type: 'white' }, // Changed to white noise for a sharper, more aggressive fire sound
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.0, release: 0.05 } // Shorter, more percussive envelope
+        }).toDestination();
+
+        const iceSynth = new Tone.PluckSynth({
+            attackNoise: 1,
+            dampening: 4000,
+            resonance: 0.7
+        }).toDestination();
+        const reverb = new Tone.Reverb({ decay: 1.5, preDelay: 0.01 }).toDestination();
+        iceSynth.connect(reverb);
+
+
+        /**
+         * Plays a sound effect.
+         * @param {string} type - The type of sound ('spell', 'hit', 'pickup', 'levelup', 'gameover').
+         * @param {string} [spellType=null] - The specific spell type if 'type' is 'spell'.
+         */
+        function playSound(type, spellType = null) {
+            Tone.start(); // Ensure audio context is started on user interaction
+            switch (type) {
+                case 'spell':
+                    if (spellType === 'fireball') {
+                        fireSynth.triggerAttackRelease("16n"); // Fireball sound, shorter duration
+                    } else if (spellType === 'iceShard') {
+                        iceSynth.triggerAttackRelease("C5", "8n"); // Ice shard sound
+                    }
+                    break;
+                case 'hit':
+                    hitSynth.triggerAttackRelease("C2", "16n");
+                    break;
+                case 'enemyHit':
+                    hitSynth.triggerAttackRelease("G2", "16n");
+                    break;
+                case 'pickup':
+                    pickupSynth.triggerAttackRelease("E5", "8n");
+                    break;
+                case 'levelup':
+                    levelUpSynth.frequency.value = 400;
+                    levelUpSynth.envelope.attack = 0.01;
+                    levelUpSynth.envelope.decay = 0.2;
+                    levelUpSynth.envelope.sustain = 0.0;
+                    levelUpSynth.envelope.release = 0.1;
+                    levelUpSynth.triggerAttackRelease("C5", "4n");
+                    break;
+                case 'gameover':
+                    synth.triggerAttackRelease(["C3", "G2", "C2"], "2n");
+                    break;
+            }
+        }
+
+        /**
+         * Helper function to darken a color.
+         * @param {string} color - Hex color string (e.g., '#RRGGBB').
+         * @param {number} percent - Percentage to darken (0-100).
+         * @returns {string} Darkened hex color string.
+         */
+        function darkenColor(color, percent) {
+            const f = parseInt(color.slice(1), 16);
+            const t = percent < 0 ? 0 : 255;
+            const p = percent / 100;
+            const R = f >> 16;
+            const G = (f >> 8) & 0x00FF;
+            const B = (f >> 0) & 0x0000FF;
+            return "#" + (0x1000000 + (Math.round((t - R) * p) + R) * 0x10000 + (Math.round((t - G) * p) + G) * 0x100 + (Math.round((t - B) * p) + B)).toString(16).slice(1);
+        }
+
+        /**
+         * Helper function to interpolate between two colors.
+         * @param {string} color1 - First hex color.
+         * @param {string} color2 - Second hex color.
+         * @param {number} t - Interpolation factor (0 to 1).
+         * @returns {string} Interpolated hex color.
+         */
+        function interpolateColor(color1, color2, t) {
+            const hexToRgb = hex => {
+                const r = parseInt(hex.substring(1, 3), 16);
+                const g = parseInt(hex.substring(3, 5), 16);
+                const b = parseInt(hex.substring(5, 7), 16);
+                return [r, g, b];
+            };
+
+            const rgbToHex = rgb => {
+                return "#" + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
+            };
+
+            const rgb1 = hexToRgb(color1);
+            const rgb2 = hexToRgb(color2);
+
+            const r = Math.round(rgb1[0] + (rgb2[0] - rgb1[0]) * t);
+            const g = Math.round(rgb1[1] + (rgb2[1] - rgb1[1]) * t);
+            const b = Math.round(rgb1[2] + (rgb2[2] - rgb1[2]) * t);
+
+            return rgbToHex([r, g, b]);
+        }
+
+
+        /**
+         * Displays a custom message box to the user.
+         * @param {string} title - The title of the message box.
+         * @param {string} content - The main content/message.
+         * @param {function} onOk - Callback function when OK is clicked.
+         */
+        function showMessageBox(title, content, onOk = () => {}) {
+            messageBoxTitle.textContent = title;
+            messageBoxContent.textContent = content;
+            messageBoxOverlay.style.display = 'flex'; // Show the overlay
+
+            // Remove existing event listener to prevent multiple calls
+            messageBoxOkButton.onclick = null;
+            messageBoxOkButton.onclick = () => {
+                messageBoxOverlay.style.display = 'none'; // Hide the overlay
+                onOk();
+            };
+        }
+
+        /**
+         * Adds a new message to the game messages list for canvas drawing.
+         * @param {string} message - The message to add.
+         * @param {string} color - Optional color for the message.
+         */
+        function addGameMessage(message, color = 'white') {
+            gameMessages.push({ text: message, color: color, timestamp: Date.now() });
+            if (gameMessages.length > MAX_MESSAGES_ON_CANVAS) {
+                gameMessages.shift(); // Remove oldest message
+            }
+        }
+
+        /**
+         * Adds a floating damage number to be displayed.
+         * @param {number} x - World X coordinate.
+         * @param {number} y - World Y coordinate.
+         * @param {number} value - The damage value.
+         * @param {string} color - Color of the text.
+         */
+        function addDamageNumber(x, y, value, color) {
+            damageNumbers.push({
+                x: x,
+                y: y,
+                value: value,
+                color: color,
+                timer: 60, // Display for 60 frames (approx 1 second)
+                vy: -1 // Initial vertical velocity for floating up
+            });
+        }
+
+        /**
+         * Calculates the current damage of a spell based on its level.
+         * @param {string} spellName - The name of the spell.
+         * @returns {number} The calculated damage.
+         */
+        function getSpellDamage(spellName) {
+            const spell = player.spells[spellName];
+            if (!spell) return 0;
+            return spell.baseDamage + (spell.level - 1) * 5; // +5 damage per level
+        }
+
+        /**
+         * Gains XP for the player and potentially levels up.
+         * @param {number} amount - The amount of XP to gain.
+         */
+        function gainPlayerXp(amount) {
+            player.xp += amount;
+            addGameMessage(`You gained ${amount} player XP!`, 'lightgreen');
+            while (player.xp >= player.xpToNextLevel) {
+                player.xp -= player.xpToNextLevel;
+                player.level++;
+                player.xpToNextLevel = Math.floor(player.xpToNextLevel * 1.5); // XP required increases
+                player.maxHp += 10; // Increase max HP on level up
+                player.hp = player.maxHp; // Fully heal on level up
+                addGameMessage(`LVL UP! Player Level ${player.level}!`, 'gold');
+                playSound('levelup'); // Play level up sound
+                checkSpellUnlocks(); // Check for new spell unlocks on level up
+            }
+        }
+
+        /**
+         * Gains XP for a specific spell and potentially levels it up.
+         * @param {string} spellName - The name of the spell (e.g., 'fireball').
+         * @param {number} amount - The amount of XP to gain.
+         */
+        function gainSpellXp(spellName, amount) {
+            const spell = player.spells[spellName];
+            if (!spell || spell.level === 0) return; // Cannot gain XP for an unlocked spell
+
+            spell.xp += amount;
+            addGameMessage(`Your ${spellName} gained ${amount} XP!`, 'lightblue');
+            while (spell.xp >= spell.xpToNextLevel) {
+                spell.xp -= spell.xpToNextLevel;
+                spell.level++;
+                spell.xpToNextLevel = Math.floor(spell.xpToNextLevel * 1.3); // XP required increases
+                addGameMessage(`${spellName} Level ${spell.level}!`, 'gold');
+            }
+        }
+
+        /**
+         * Gains XP for melee skill and potentially levels it up.
+         * @param {number} amount - The amount of XP to gain.
+         */
+        function gainMeleeXp(amount) {
+            player.meleeXp += amount;
+            addGameMessage(`Melee gained ${amount} XP!`, 'orange');
+            while (player.meleeXp >= player.meleeXpToNextLevel) {
+                player.meleeXp -= player.meleeXpToNextLevel;
+                player.meleeLevel++;
+                player.meleeXpToNextLevel = Math.floor(player.meleeXpToNextLevel * 1.4); // XP required increases
+                player.meleeAttackRange = player.baseMeleeAoeRange + (player.meleeLevel - 1) * player.meleeAoePerLevel; // Increase AOE
+                addGameMessage(`Melee Level ${player.meleeLevel}! AOE increased!`, 'orange');
+            }
+        }
+
+        /**
+         * Checks if any spells should be unlocked based on player level.
+         */
+        function checkSpellUnlocks() {
+            for (const spellName in player.spells) {
+                const spell = player.spells[spellName];
+                if (spell.level === 0 && player.level >= spell.requiredLevel) {
+                    spell.level = 1; // Unlock the spell at level 1
+                    addGameMessage(`You unlocked ${spellName}!`, 'yellow');
+                }
+            }
+        }
+
+        /**
+         * Spawns a new enemy if there's space.
+         */
+        function spawnEnemy() {
+            if (enemies.length >= MAX_ENEMIES) {
+                return; // Don't spawn if max enemies reached
+            }
+
+            const isDay = gameTime >= 0 && gameTime < Math.PI; // Day is first half of cycle (0 to PI)
+            const enemyPool = isDay ? DAY_ENEMY_DEFINITIONS : NIGHT_ENEMY_DEFINITIONS;
+            const randomType = enemyPool[Math.floor(Math.random() * enemyPool.length)];
+
+            // Calculate enemy HP based on player level
+            const enemyMaxHp = randomType.baseHp + (player.level - 1) * randomType.hpPerLevel;
+
+            // Find a random walkable tile for enemy spawn
+            let spawnX, spawnY;
+            let validSpawn = false;
+            let attempts = 0;
+            const maxAttempts = 100;
+            while (!validSpawn && attempts < maxAttempts) {
+                const tileX = Math.floor(Math.random() * MAP_COLS);
+                const tileY = Math.floor(Math.random() * MAP_ROWS);
+                const tileType = gameMap[tileY][tileX];
+
+                // Ensure spawn is on grass or path, and not inside a structure
+                if ((tileType === 0 || tileType === 1) &&
+                    tileType !== 7 && tileType !== 8) { // Not castle or hut
+                    spawnX = tileX * TILE_SIZE + TILE_SIZE / 2;
+                    spawnY = tileY * TILE_SIZE + TILE_SIZE / 2;
+                    // Ensure enemy doesn't spawn right on top of player or too close
+                    if (Math.abs(spawnX - player.x) > TILE_SIZE * 5 || Math.abs(spawnY - player.y) > TILE_SIZE * 5) {
+                        validSpawn = true;
+                    }
+                }
+                attempts++;
+            }
+
+            if (validSpawn) {
+                enemies.push({
+                    ...randomType,
+                    maxHp: enemyMaxHp, // Set scaled max HP
+                    hp: enemyMaxHp,    // Current HP starts at max
+                    x: spawnX,
+                    y: spawnY,
+                    vx: 0, // Initial velocity
+                    vy: 0,
+                    moveTimer: 0,
+                    moveInterval: 1000 + Math.random() * 2000, // Enemies change direction every 1-3 seconds
+                    lastAttackTime: 0 // Initialize last attack time
+                });
+                addGameMessage(`A wild ${randomType.name} appeared!`, 'orange');
+            } else {
+                addGameMessage("Could not find a valid spawn point for enemy.", 'red');
+            }
+        }
+
+        /**
+         * Initiates the casting of a spell, creating a projectile.
+         * Targets the closest enemy.
+         * @param {string} spellName - The name of the spell to cast.
+         */
+        function castSpell(spellName) {
+            const spell = player.spells[spellName];
+
+            if (player.isCasting || projectile) { // Prevent casting while already casting or projectile is active
+                addGameMessage("Already casting or projectile in flight!", 'gray');
+                return;
+            }
+
+            if (!spell || spell.level === 0) {
+                addGameMessage(`You haven't unlocked ${spellName} yet!`, 'red');
+                return;
+            }
+
+            if (Date.now() - spell.lastCastTime < spell.cooldown) {
+                addGameMessage(`${spellName} is on cooldown!`, 'gray');
+                return;
+            }
+
+            // Find the closest enemy
+            let closestEnemy = null;
+            let minDistance = Infinity;
+            for (const enemy of enemies) {
+                const dist = Math.sqrt(
+                    Math.pow(enemy.x - player.x, 2) +
+                    Math.pow(enemy.y - player.y, 2)
+                );
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestEnemy = enemy;
+                }
+            }
+
+            if (!closestEnemy) {
+                addGameMessage("No enemy to attack!", 'red');
+                return;
+            }
+
+            player.isCasting = true;
+            player.castingSpellType = spellName;
+            player.castAnimationTimer = player.castAnimationDuration; // Start the timer
+            spell.lastCastTime = Date.now(); // Set cooldown
+            playSound('spell', spellName); // Play spell cast sound, passing spellName
+
+            // Projectile will be created when castAnimationTimer hits 0 in updateGameLogic
+            addGameMessage(`You prepare to cast ${spellName}...`, 'lightblue');
+        }
+
+        /**
+         * Handles the player performing a melee attack.
+         */
+        function meleeAttack() {
+            if (Date.now() - player.lastMeleeAttackTime < player.meleeAttackCooldown || player.isMeleeAttacking) {
+                addGameMessage("Melee attack on cooldown!", 'gray');
+                return;
+            }
+
+            player.isMeleeAttacking = true;
+            player.meleeAnimationTimer = player.meleeAnimationDuration;
+            player.lastMeleeAttackTime = Date.now();
+
+            let damage = player.baseMeleeDamage;
+            if (player.equipped.weapon) {
+                damage += player.equipped.weapon.damage;
+            }
+
+            let enemiesHit = 0;
+            for (const enemy of enemies) {
+                const dist = Math.sqrt(
+                    Math.pow(enemy.x - player.x, 2) +
+                    Math.pow(enemy.y - player.y, 2)
+                );
+                // Use dynamic meleeAttackRange
+                if (dist <= player.meleeAttackRange) {
+                    enemy.hp -= damage;
+                    addGameMessage(`You hit ${enemy.name} for ${damage} melee damage!`, 'yellow');
+                    addDamageNumber(enemy.x, enemy.y, damage, 'yellow');
+                    playSound('hit');
+                    enemiesHit++;
+
+                    if (enemy.hp <= 0) {
+                        addGameMessage(`${enemy.name} defeated!`, 'lime');
+                        gainPlayerXp(enemy.xpReward);
+                        player.gold += enemy.goldReward;
+                        addGameMessage(`Found ${enemy.goldReward} gold!`, 'yellow');
+                        handleLootDrop(enemy);
+                        // Mark for removal later to avoid issues with iterating and modifying
+                        enemy.toRemove = true;
+                    }
+                }
+            }
+
+            enemies = enemies.filter(e => !e.toRemove); // Remove defeated enemies
+            if (enemiesHit > 0) {
+                gainMeleeXp(enemiesHit * 5); // Gain melee XP for hitting enemies
+            } else {
+                addGameMessage("No enemy in melee range!", 'red');
+            }
+
+            // Spawn new enemies for those removed
+            for (let i = 0; i < enemiesHit; i++) {
+                setTimeout(spawnEnemy, 2000 + i * 500); // Stagger spawns
+            }
+        }
+
+
+        /**
+         * Handles the player resting to heal.
+         */
+        function rest() {
+            if (player.hp === player.maxHp) { // Check against maxHp, not hp
+                addGameMessage("Already at full health!", 'gray');
+                return;
+            }
+            const healAmount = Math.floor(player.maxHp * 0.2); // Heal 20% of max HP
+            player.hp = Math.min(player.maxHp, player.hp + healAmount);
+            addGameMessage(`You rest and heal for ${healAmount} HP.`, 'lightgreen');
+        }
+
+        /**
+         * Resets the game state to initial values.
+         */
+        function resetGame() {
+            player = {
+                x: 0, // Will be set after castle generation
+                y: 0, // Will be set after castle generation
+                hp: 100,
+                maxHp: 100,
+                level: 1,
+                xp: 0,
+                xpToNextLevel: 100,
+                gold: 0,
+                baseMeleeDamage: 5,
+                baseMeleeAoeRange: PLAYER_SIZE * 0.75, // Base AOE range
+                meleeAoePerLevel: TILE_SIZE * 0.2, // Increase AOE by 0.2 tiles per level
+                meleeAttackRange: PLAYER_SIZE * 0.75, // Will be updated dynamically
+                meleeAttackCooldown: 600,
+                lastMeleeAttackTime: 0,
+                meleeLevel: 1,
+                meleeXp: 0,
+                meleeXpToNextLevel: 50,
+                spells: {
+                    fireball: {
+                        level: 1,
+                        xp: 0,
+                        xpToNextLevel: 50,
+                        baseDamage: 10,
+                        requiredLevel: 1,
+                        key: '1',
+                        cooldown: 500, // Decreased by 0.5 seconds (was 1000)
+                        lastCastTime: 0
+                    },
+                    iceShard: {
+                        level: 0,
+                        xp: 0,
+                        xpToNextLevel: 75,
+                        baseDamage: 15,
+                        requiredLevel: 3,
+                        key: '2',
+                        cooldown: 1000, // Decreased by 0.5 seconds (was 1500)
+                        lastCastTime: 0
+                    }
+                },
+                isCasting: false,
+                castingSpellType: null,
+                castAnimationTimer: 0,
+                castAnimationDuration: 300,
+                isMoving: false,
+                animationFrame: 0,
+                lastFrameTime: 0,
+                isMeleeAttacking: false,
+                meleeAnimationTimer: 0,
+                meleeAnimationDuration: 200,
+                inventory: [],
+                equipped: {
+                    helmet: null,
+                    chestplate: null,
+                    pants: null,
+                    boots: null,
+                    weapon: null
+                }
+            };
+            enemies = []; // Reset enemies array
+            droppedItems = []; // Reset dropped items
+            damageNumbers = []; // Reset damage numbers
+            gameMessages = [];
+            projectile = null; // Reset projectile
+            hpBubbles = []; // Reset bubbles
+            xpBubbles = []; // Reset bubbles
+            addGameMessage("Welcome to Wizard's Quest!", 'yellow');
+            addGameMessage("Explore the world and fight!", 'yellow');
+            addGameMessage("Use ARROW keys or WASD to move.", 'yellow');
+            addGameMessage("Press 1 for Fireball, 2 for Ice Shard, E for Melee, R to Rest.", 'yellow');
+            generateLandscape(); // Regenerate landscape on reset
+            // Spawn initial enemies
+            for (let i = 0; i < MAX_ENEMIES; i++) {
+                spawnEnemy();
+            }
+            checkSpellUnlocks(); // Initial check for spell unlocks
+            // Initialize melee attack range based on initial level
+            player.meleeAttackRange = player.baseMeleeAoeRange + (player.meleeLevel - 1) * player.meleeAoePerLevel;
+        }
+
+        /**
+         * Handles loot drops from defeated enemies.
+         * @param {object} defeatedEnemy - The enemy that was defeated.
+         */
+        function handleLootDrop(defeatedEnemy) {
+            const dropChance = Math.random(); // 0 to 1
+            if (dropChance < 0.3) { // 30% chance for a drop
+                const itemTypeRoll = Math.random();
+                let droppedItemDef;
+
+                if (itemTypeRoll < 0.6) { // 60% chance for armor
+                    droppedItemDef = ARMOR_DEFINITIONS[Math.floor(Math.random() * ARMOR_DEFINITIONS.length)];
+                } else { // 40% chance for weapon
+                    droppedItemDef = WEAPON_DEFINITIONS[Math.floor(Math.random() * WEAPON_DEFINITIONS.length)];
+                }
+
+                const droppedItem = {
+                    ...droppedItemDef,
+                    id: Date.now() + Math.random(), // Add unique ID
+                    x: defeatedEnemy.x, // Item drops at enemy's position
+                    y: defeatedEnemy.y
+                };
+                droppedItems.push(droppedItem);
+                addGameMessage(`A ${droppedItem.name} dropped!`, 'gold');
+            }
+        }
+
+        /**
+         * Attempts to equip an item. Automatically equips if better or if slot is empty.
+         * @param {object} item - The item to equip.
+         */
+        function equipItem(item) {
+            if (Object.values(ARMOR_TYPES).includes(item.type)) { // It's an armor piece
+                const currentArmor = player.equipped[item.type];
+                if (!currentArmor || item.healthBonus > currentArmor.healthBonus) {
+                    if (currentArmor) {
+                        player.inventory.push(currentArmor); // Add old armor to inventory
+                        player.maxHp -= currentArmor.healthBonus; // Remove old bonus
+                        addGameMessage(`Unequipped ${currentArmor.name}.`, 'gray');
+                    }
+                    player.equipped[item.type] = item;
+                    player.maxHp += item.healthBonus; // Add new bonus
+                    // Ensure current HP doesn't exceed new max HP
+                    player.hp = Math.min(player.hp, player.maxHp);
+                    addGameMessage(`Equipped ${item.name}! (+${item.healthBonus} HP)`, 'lime');
+                    playSound('pickup'); // Play pickup sound
+                } else {
+                    player.inventory.push(item); // Add to inventory if not better
+                    addGameMessage(`Added ${item.name} to inventory.`, 'gray');
+                    playSound('pickup'); // Play pickup sound
+                }
+            } else if (Object.values(WEAPON_TYPES).includes(item.type)) { // It's a weapon
+                const currentWeapon = player.equipped.weapon;
+                if (!currentWeapon || item.damage > currentWeapon.damage) {
+                    if (currentWeapon) {
+                        player.inventory.push(currentWeapon); // Add old weapon to inventory
+                        addGameMessage(`Unequipped ${currentWeapon.name}.`, 'gray');
+                    }
+                    player.equipped.weapon = item;
+                    addGameMessage(`Equipped ${item.name}! (+${item.damage} DMG)`, 'lime');
+                    playSound('pickup'); // Play pickup sound
+                } else {
+                    player.inventory.push(item); // Add to inventory if not better
+                    addGameMessage(`Added ${item.name} to inventory.`, 'gray');
+                    playSound('pickup'); // Play pickup sound
+                }
+            }
+            // Note: Item is removed from droppedItems array in updateGameLogic after pickup
+        }
+
+        /**
+         * Updates enemy positions and behavior.
+         */
+        function updateEnemyMovement() {
+            for (const enemy of enemies) {
+                // Simple AI: move towards player if within a certain range, otherwise wander
+                const detectionRange = TILE_SIZE * 8; // 8 tiles
+                const distanceToPlayer = Math.sqrt(
+                    Math.pow(enemy.x - player.x, 2) +
+                    Math.pow(enemy.y - player.y, 2)
+                );
+
+                if (distanceToPlayer < detectionRange) {
+                    // Move towards player
+                    const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                    enemy.vx = Math.cos(angle) * enemy.moveSpeed; // Use enemy's specific move speed
+                    enemy.vy = Math.sin(angle) * enemy.moveSpeed;
+                } else {
+                    // Wander randomly
+                    enemy.moveTimer -= 1000 / 60; // Decrement based on FPS
+                    if (enemy.moveTimer <= 0) {
+                        enemy.moveTimer = enemy.moveInterval;
+                        // Random direction
+                        const angle = Math.random() * Math.PI * 2;
+                        enemy.vx = Math.cos(angle) * enemy.moveSpeed;
+                        enemy.vy = Math.sin(angle) * enemy.moveSpeed;
+                    }
+                }
+
+                let newEnemyX = enemy.x + enemy.vx;
+                let newEnemyY = enemy.y + enemy.vy;
+
+                // Enemy collision with map boundaries and non-walkable tiles
+                const isWalkableForEnemy = (x, y) => {
+                    const col = Math.floor(x / TILE_SIZE);
+                    const row = Math.floor(y / TILE_SIZE);
+                    if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return false;
+                    const tileType = gameMap[row][col];
+                    // Enemies cannot walk on trees, obstacles, water, mountains, castle walls, or huts
+                    return tileType === 0 || tileType === 1; // Grass or Path
+                };
+
+                const enemyLeft = newEnemyX - ENEMY_SIZE / 2;
+                const enemyRight = newEnemyX + ENEMY_SIZE / 2;
+                const enemyTop = newEnemyY - ENEMY_SIZE / 2;
+                const enemyBottom = newEnemyY + ENEMY_SIZE / 2;
+
+                // Check all four corners of the enemy for collision
+                const canEnemyMoveX = isWalkableForEnemy(enemyLeft, enemyTop) && isWalkableForEnemy(enemyRight, enemyTop) &&
+                                     isWalkableForEnemy(enemyLeft, enemyBottom) && isWalkableForEnemy(enemyRight, enemyBottom);
+
+                if (canEnemyMoveX) {
+                    enemy.x = newEnemyX;
+                    enemy.y = newEnemyY;
+                } else {
+                    // If full movement is blocked, try moving only horizontally or vertically
+                    const canEnemyMoveHorizontal = isWalkableForEnemy(newEnemyX, enemy.y - ENEMY_SIZE / 2) && isWalkableForEnemy(newEnemyX, enemy.y + ENEMY_SIZE / 2);
+                    const canEnemyMoveVertical = isWalkableForEnemy(enemy.x - ENEMY_SIZE / 2, newEnemyY) && isWalkableForEnemy(enemy.x + ENEMY_SIZE / 2, newEnemyY);
+
+                    if (canEnemyMoveHorizontal) {
+                        enemy.x = newEnemyX;
+                    } else {
+                        enemy.vx = -enemy.vx; // Bounce off if blocked
+                    }
+                    if (canEnemyMoveVertical) {
+                        enemy.y = newEnemyY;
+                    } else {
+                        enemy.vy = -enemy.vy; // Bounce off if blocked
+                    }
+                }
+
+                // Clamp enemy position to world bounds
+                enemy.x = Math.max(ENEMY_SIZE / 2, Math.min(enemy.x, MAP_COLS * TILE_SIZE - ENEMY_SIZE / 2));
+                enemy.y = Math.max(ENEMY_SIZE / 2, Math.min(enemy.y, MAP_ROWS * TILE_SIZE - ENEMY_SIZE / 2));
+            }
+        }
+
+
+        /**
+         * Updates game logic: projectile movement, casting timers, enemy attacks, and item pickup.
+         */
+        function updateGameLogic() {
+            // Update casting animation timer
+            if (player.isCasting) {
+                player.castAnimationTimer -= 1000 / 60; // Assuming 60 FPS
+                if (player.castAnimationTimer <= 0) {
+                    player.isCasting = false; // End casting animation
+                    // Only create projectile IF it hasn't been created yet for this cast
+                    if (projectile === null) {
+                        // Find the closest enemy again (in case target moved/died)
+                        let closestEnemy = null;
+                        let minDistance = Infinity;
+                        for (const enemy of enemies) {
+                            const dist = Math.sqrt(
+                                Math.pow(enemy.x - player.x, 2) +
+                                Math.pow(enemy.y - player.y, 2)
+                            );
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                closestEnemy = enemy;
+                            }
+                        }
+
+                        if (closestEnemy) {
+                            projectile = {
+                                x: player.x,
+                                y: player.y,
+                                targetX: closestEnemy.x,
+                                targetY: closestEnemy.y,
+                                type: player.castingSpellType, // Use the spell type that was cast
+                                speed: PROJECTILE_SPEED,
+                                damage: getSpellDamage(player.castingSpellType),
+                                targetEnemy: closestEnemy
+                            };
+                            addGameMessage(`You unleashed ${player.castingSpellType}!`, 'lime');
+                        } else {
+                            addGameMessage("Spell fizzled (no target found).", 'gray');
+                        }
+                    }
+                    player.castingSpellType = null; // Clear casting type after launch attempt
+                }
+            }
+
+            // Update melee attack animation timer
+            if (player.isMeleeAttacking) {
+                player.meleeAnimationTimer -= 1000 / 60;
+                if (player.meleeAnimationTimer <= 0) {
+                    player.isMeleeAttacking = false;
+                }
+            }
+
+            // --- Projectile movement and hit detection (ALWAYS run if projectile exists) ---
+            if (projectile && projectile.targetEnemy) {
+                const target = projectile.targetEnemy;
+                // Check if target is still valid (e.g., not defeated in the same frame by another source)
+                const targetIndex = enemies.indexOf(target);
+                if (targetIndex === -1) { // Target no longer exists
+                    projectile = null;
+                    return; // Skip further processing for this projectile
+                }
+
+                const dx = target.x - projectile.x;
+                const dy = target.y - projectile.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < projectile.speed) {
+                    // Projectile reached target
+                    target.hp -= projectile.damage;
+                    addGameMessage(`${target.name} takes ${projectile.damage} damage!`, 'orange');
+                    addDamageNumber(target.x, target.y, projectile.damage, 'orange'); // Show damage number
+                    playSound('hit'); // Play hit sound
+                    gainSpellXp(projectile.type, 10); // Gain spell XP for hitting
+
+                    if (target.hp <= 0) {
+                        addGameMessage(`${target.name} defeated!`, 'lime');
+                        gainPlayerXp(target.xpReward);
+                        player.gold += target.goldReward;
+                        addGameMessage(`Found ${target.goldReward} gold!`, 'yellow');
+                        handleLootDrop(target); // Handle loot drop from defeated enemy
+                        enemies.splice(targetIndex, 1); // Use splice to remove by index
+                        // Spawn a new enemy after a delay if max enemies not reached
+                        setTimeout(spawnEnemy, 2000);
+                    }
+                    projectile = null; // Destroy projectile
+                } else {
+                    // Move projectile towards target
+                    projectile.x += (dx / distance) * projectile.speed;
+                    projectile.y += (dy / distance) * projectile.speed;
+                }
+            }
+
+            // --- Item pickup logic ---
+            for (let i = droppedItems.length - 1; i >= 0; i--) {
+                const item = droppedItems[i];
+                const distToPlayer = Math.sqrt(
+                    Math.pow(item.x - player.x, 2) +
+                    Math.pow(item.y - player.y, 2)
+                );
+
+                if (distToPlayer < PICKUP_RANGE) {
+                    if (distToPlayer < ITEM_PULL_SPEED) { // Item is close enough to be picked up
+                        equipItem(item);
+                        droppedItems.splice(i, 1); // Remove item from ground
+                    } else {
+                        // Move item towards player
+                        const angle = Math.atan2(player.y - item.y, player.x - item.x);
+                        item.x += Math.cos(angle) * ITEM_PULL_SPEED;
+                        item.y += Math.sin(angle) * ITEM_PULL_SPEED;
+                    }
+                }
+            }
+
+            // Enemy attack logic for all enemies
+            for (const enemy of enemies) {
+                const distanceToPlayer = Math.sqrt(
+                    Math.pow(enemy.x - player.x, 2) +
+                    Math.pow(enemy.y - player.y, 2)
+                );
+
+                if (distanceToPlayer < ENEMY_ATTACK_RANGE) {
+                    if (Date.now() - enemy.lastAttackTime > ENEMY_ATTACK_COOLDOWN) {
+                        player.hp -= enemy.damage;
+                        addGameMessage(`${enemy.name} attacks you for ${enemy.damage} damage!`, 'red');
+                        addDamageNumber(player.x, player.y, enemy.damage, 'red'); // Show damage number on player
+                        playSound('enemyHit'); // Play enemy hit sound
+                        enemy.lastAttackTime = Date.now(); // Reset cooldown
+
+                        if (player.hp <= 0) {
+                            player.hp = 0;
+                            addGameMessage("You have been defeated!", 'darkred');
+                            playSound('gameover'); // Play game over sound
+                            showMessageBox("Game Over!", "You were defeated by the enemy. Try again!", () => {
+                                resetGame();
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Update player animation frame
+            if (player.isMoving && Date.now() - player.lastFrameTime > PLAYER_ANIMATION_SPEED) {
+                player.animationFrame = (player.animationFrame + 1) % PLAYER_WALK_FRAMES;
+                player.lastFrameTime = Date.now();
+            } else if (!player.isMoving) {
+                player.animationFrame = 0; // Reset to standing pose
+            }
+
+            // Update damage numbers
+            for (let i = damageNumbers.length - 1; i >= 0; i--) {
+                const num = damageNumbers[i];
+                num.y += num.vy; // Move up
+                num.timer--; // Decrement timer
+                if (num.timer <= 0) {
+                    damageNumbers.splice(i, 1); // Remove if timer runs out
+                }
+            }
+
+            // Update wave animation time and game time for day/night cycle
+            waveAnimationTime += 0.05; // Adjust speed of wave
+            gameTime = (gameTime + 0.000349) % (Math.PI * 2); // Slowly advance time, cycle every 2*PI
+
+            // Update bubbles
+            updateBubbles(hpBubbles, 3, 1, 0.5, ORB_RADIUS); // Max 3 bubbles, speed 1, size 0.5
+            updateBubbles(xpBubbles, 3, 1, 0.5, ORB_RADIUS); // Max 3 bubbles, speed 1, size 0.5
+        }
+
+        /**
+         * Updates bubble positions and removes old bubbles.
+         * @param {Array} bubblesArray - The array of bubbles (hpBubbles or xpBubbles).
+         * @param {number} maxBubbles - Maximum number of bubbles to maintain.
+         * @param {number} speed - Vertical speed of bubbles.
+         * @param {number} size - Base size of bubbles.
+         * @param {number} orbRadius - The radius of the orb the bubbles are within.
+         */
+        function updateBubbles(bubblesArray, maxBubbles, speed, size, orbRadius) {
+            for (let i = bubblesArray.length - 1; i >= 0; i--) {
+                const bubble = bubblesArray[i];
+                bubble.y -= speed;
+                bubble.alpha -= 0.01; // Fade out
+                if (bubble.alpha <= 0 || bubble.y < bubble.minY) { // Remove if faded or too high
+                    bubblesArray.splice(i, 1);
+                }
+            }
+            // Add new bubbles if below max
+            if (bubblesArray.length < maxBubbles && Math.random() < 0.05) { // Small chance to add new bubble
+                bubblesArray.push({
+                    x: Math.random() * (orbRadius * 1.5) - (orbRadius * 0.75), // Random X within orb
+                    y: orbRadius * 0.8, // Start near bottom of liquid
+                    radius: Math.random() * 2 + size, // Random size
+                    alpha: 1.0, // Start fully opaque
+                    minY: -orbRadius // Bubbles disappear above the orb
+                });
+            }
+        }
+
+
+        /**
+         * Calculates camera position to keep player centered on screen.
+         */
+        function updateCamera() {
+            cameraX = player.x - CANVAS_WIDTH / 2;
+            cameraY = player.y - CANVAS_HEIGHT / 2;
+
+            // Clamp camera to map boundaries
+            cameraX = Math.max(0, Math.min(cameraX, MAP_COLS * TILE_SIZE - CANVAS_WIDTH));
+            cameraY = Math.max(0, Math.min(cameraY, MAP_ROWS * TILE_SIZE - CANVAS_HEIGHT));
+        }
+
+        // --- Drawing Functions ---
+
+        /**
+         * Draws the outdoor environment based on the game map, adjusted by camera.
+         */
+        function generateLandscape() {
+            // Clear existing map
+            for (let r = 0; r < MAP_ROWS; r++) {
+                for (let c = 0; c < MAP_COLS; c++) {
+                    gameMap[r][c] = 0; // Reset to grass
+                }
+            }
+
+            // Create a larger, more central open area for the path
+            const pathCenterX = Math.floor(MAP_COLS / 2);
+            const pathCenterY = Math.floor(MAP_ROWS / 2);
+            const pathWidth = 7; // Wider path
+            const pathLength = 300; // Longer path segments
+
+            let currentPathX = pathCenterX;
+            let currentPathY = pathCenterY;
+
+            for (let i = 0; i < pathLength; i++) {
+                // Draw a segment of the path
+                for (let pw = 0; pw < pathWidth; pw++) {
+                    const drawX = currentPathX + pw - Math.floor(pathWidth / 2);
+                    if (drawX >= 0 && drawX < MAP_COLS && currentPathY >= 0 && currentPathY < MAP_ROWS) {
+                        gameMap[currentPathY][drawX] = 1;
+                    }
+                }
+
+                // Randomly change direction
+                const direction = Math.floor(Math.random() * 4); // 0:up, 1:down, 2:left, 3:right
+                if (direction === 0) currentPathY--;
+                else if (direction === 1) currentPathY++;
+                else if (direction === 2) currentPathX--;
+                else currentPathX++;
+
+                // Keep path within bounds
+                currentPathX = Math.max(1, Math.min(currentPathX, MAP_COLS - 2));
+                currentPathY = Math.max(1, Math.min(currentPathY, MAP_ROWS - 2));
+            }
+
+            // Castle dimensions (in tiles)
+            const CASTLE_WIDTH_TILES = 10;
+            const CASTLE_HEIGHT_TILES = 8;
+            const castleStartX = Math.floor(MAP_COLS / 2 - CASTLE_WIDTH_TILES / 2);
+            const castleStartY = Math.floor(MAP_ROWS / 2 - CASTLE_HEIGHT_TILES / 2);
+
+            // Draw castle walls
+            for (let r = 0; r < CASTLE_HEIGHT_TILES; r++) {
+                for (let c = 0; c < CASTLE_WIDTH_TILES; c++) {
+                    const mapR = castleStartY + r;
+                    const mapC = castleStartX + c;
+                    if (mapR >= 0 && mapR < MAP_ROWS && mapC >= 0 && mapC < MAP_COLS) {
+                        gameMap[mapR][mapC] = 7; // Castle Wall
+                    }
+                }
+            }
+            // Create a small entrance in the castle
+            gameMap[castleStartY + CASTLE_HEIGHT_TILES - 1][castleStartX + Math.floor(CASTLE_WIDTH_TILES / 2)] = 1; // Path tile for entrance
+
+            // Player initial position adjustment:
+            // Place player just outside the castle entrance.
+            player.x = (castleStartX + Math.floor(CASTLE_WIDTH_TILES / 2)) * TILE_SIZE;
+            player.y = (castleStartY + CASTLE_HEIGHT_TILES) * TILE_SIZE + TILE_SIZE; // Just below the entrance
+
+            // Huts
+            const NUM_HUTS = 5;
+            const HUT_SIZE_TILES = 3; // Huts are 3x3 tiles
+            for (let i = 0; i < NUM_HUTS; i++) {
+                let hutPlaced = false;
+                let attempts = 0;
+                const maxHutAttempts = 100;
+                while (!hutPlaced && attempts < maxHutAttempts) {
+                    // Place huts around the outskirts, avoiding the very center (where castle is)
+                    let hutStartX = Math.floor(Math.random() * (MAP_COLS - HUT_SIZE_TILES));
+                    let hutStartY = Math.floor(Math.random() * (MAP_ROWS - HUT_SIZE_TILES));
+
+                    // Ensure huts are not too close to the center path/castle
+                    const distToCastleCenterX = Math.abs((hutStartX + HUT_SIZE_TILES/2) - (castleStartX + CASTLE_WIDTH_TILES/2));
+                    const distToCastleCenterY = Math.abs((hutStartY + HUT_SIZE_TILES/2) - (castleStartY + CASTLE_HEIGHT_TILES/2));
+                    const minDistanceToCastle = Math.max(CASTLE_WIDTH_TILES, CASTLE_HEIGHT_TILES) + 5; // 5 tiles buffer
+
+                    if (distToCastleCenterX > minDistanceToCastle || distToCastleCenterY > minDistanceToCastle) {
+                        let overlapsExistingStructure = false;
+                        for (let r = 0; r < HUT_SIZE_TILES; r++) {
+                            for (let c = 0; c < HUT_SIZE_TILES; c++) {
+                                const mapR = hutStartY + r;
+                                const mapC = hutStartX + c;
+                                if (mapR < 0 || mapR >= MAP_ROWS || mapC < 0 || mapC >= MAP_COLS ||
+                                    (gameMap[mapR][mapC] !== 0 && gameMap[mapR][mapC] !== 1)) { // Overlaps non-grass/path
+                                    overlapsExistingStructure = true;
+                                    break;
+                                }
+                            }
+                            if (overlapsExistingStructure) break;
+                        }
+
+                        if (!overlapsExistingStructure) {
+                            for (let r = 0; r < HUT_SIZE_TILES; r++) {
+                                for (let c = 0; c < HUT_SIZE_TILES; c++) {
+                                    gameMap[hutStartY + r][hutStartX + c] = 8; // Hut tile
+                                }
+                            }
+                            hutPlaced = true;
+                        }
+                    }
+                    attempts++;
+                }
+            }
+
+            // Add trees, water, mountains, and obstacles, ensuring they don't block paths too much
+            // Significantly reduce density for more open areas
+            const treeDensity = 0.008; // Even less dense
+            const waterDensity = 0.001; // Even less dense
+            const mountainDensity = 0.003; // Even less dense
+            const obstacleDensity = 0.005; // Even less dense
+
+            for (let r = 0; r < MAP_ROWS; r++) {
+                for (let c = 0; c < MAP_COLS; c++) {
+                    if (gameMap[r][c] === 0) { // Only modify grass tiles not yet occupied
+                        const rand = Math.random();
+                        if (rand < treeDensity) {
+                            gameMap[r][c] = 2; // Tree
+                        } else if (rand < treeDensity + waterDensity) {
+                            gameMap[r][c] = 4; // Water
+                        } else if (rand < treeDensity + waterDensity + mountainDensity) {
+                            gameMap[r][c] = 5; // Mountain/Rock
+                        } else if (rand < treeDensity + waterDensity + mountainDensity + obstacleDensity) {
+                            gameMap[r][c] = 3; // Obstacle
+                        }
+                    }
+                }
+            }
+        }
+        function drawEnvironment() {
+            const startCol = Math.floor(cameraX / TILE_SIZE);
+            const endCol = Math.ceil((cameraX + CANVAS_WIDTH) / TILE_SIZE);
+            const startRow = Math.floor(cameraY / TILE_SIZE);
+            const endRow = Math.ceil((cameraY + CANVAS_HEIGHT) / TILE_SIZE);
+
+            for (let row = startRow; row < endRow; row++) {
+                for (let col = startCol; col < endCol; col++) {
+                    if (row >= 0 && row < MAP_ROWS && col >= 0 && col < MAP_COLS) {
+                        const tileType = gameMap[row][col];
+                        const x = col * TILE_SIZE - cameraX;
+                        const y = row * TILE_SIZE - cameraY;
+
+                        switch (tileType) {
+                            case 0: // Grass
+                                // Base grass
+                                ctx.fillStyle = '#4a6a3a';
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                // Lighter grass pixels for texture
+                                ctx.fillStyle = '#5a7a4a';
+                                for (let i = 0; i < 3; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 2, 2);
+                                }
+                                // Darker grass pixels for depth
+                                ctx.fillStyle = '#3a5a2a';
+                                for (let i = 0; i < 2; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, 1);
+                                }
+                                break;
+                            case 1: // Path
+                                // Base path color
+                                ctx.fillStyle = '#7a6a5a';
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                // Darker path pixels for texture
+                                ctx.fillStyle = '#6a5a4a';
+                                for (let i = 0; i < 4; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 2, 2);
+                                }
+                                break;
+                            case 2: // Tree
+                                ctx.fillStyle = '#4a6a3a'; // Grass underneath
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                drawTree(x, y);
+                                break;
+                            case 3: // Obstacle (Barrel/Crate)
+                                ctx.fillStyle = '#4a6a3a'; // Grass underneath
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                drawObstacle(x, y);
+                                break;
+                            case 4: // Water
+                                ctx.fillStyle = '#3a5a7a'; // Blue water
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                // Add ripples
+                                ctx.fillStyle = '#4a6a8a';
+                                for (let i = 0; i < 3; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 2, 2);
+                                }
+                                ctx.fillStyle = '#2a4a6a'; // Darker water for depth
+                                for (let i = 0; i < 2; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, 1);
+                                }
+                                break;
+                            case 5: // Mountain
+                                ctx.fillStyle = '#6a6a6a'; // Grey rock
+                                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                                // Add darker rock texture and highlights
+                                ctx.fillStyle = '#5a5a5a';
+                                for (let i = 0; i < 4; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 2, 2);
+                                }
+                                ctx.fillStyle = '#7a7a7a';
+                                for (let i = 0; i < 2; i++) {
+                                    ctx.fillRect(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, 1);
+                                }
+                                break;
+                            case 7: // Castle Wall
+                                drawCastleWall(x, y);
+                                break;
+                            case 8: // Hut
+                                drawHut(x, y);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * Draws an 8-bit tree with a rounded canopy.
+         * @param {number} x - X coordinate of the tile (screen).
+         * @param {number} y - Y coordinate of the tile (screen).
+         */
+        function drawTree(x, y) {
+            // Trunk
+            ctx.fillStyle = '#6b4a2a'; // Brown
+            ctx.fillRect(x + TILE_SIZE / 2 - 4, y + TILE_SIZE / 2, 8, TILE_SIZE / 2);
+
+            // Leaves (rounded canopy)
+            ctx.fillStyle = '#228b22'; // Forest green
+            // Bottom layer
+            ctx.fillRect(x + 2, y + TILE_SIZE / 2 - 4, TILE_SIZE - 4, 12);
+            // Middle layer
+            ctx.fillRect(x + 4, y + TILE_SIZE / 2 - 8, TILE_SIZE - 8, 10);
+            // Top layer
+            ctx.fillRect(x + 8, y + TILE_SIZE / 2 - 12, TILE_SIZE - 16, 8);
+
+            // Darker green for depth/shadows
+            ctx.fillStyle = '#1a7a1a';
+            ctx.fillRect(x + 4, y + TILE_SIZE / 2 - 2, TILE_SIZE - 8, 8);
+            ctx.fillRect(x + 10, y + TILE_SIZE / 2 - 6, TILE_SIZE - 20, 6);
+        }
+
+        /**
+         * Draws an 8-bit obstacle (e.g., crate).
+         * @param {number} x - X coordinate of the tile (screen).
+         * @param {number} y - Y coordinate of the tile (screen).
+         */
+        function drawObstacle(x, y) {
+            // Simple Crate
+            ctx.fillStyle = '#8b6a4a'; // Wood color
+            ctx.fillRect(x + 4, y + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+            ctx.fillStyle = '#6a4a2a'; // Darker wood for lines and shadow
+            ctx.fillRect(x + 4, y + TILE_SIZE / 2 - 2, TILE_SIZE - 8, 4); // Horizontal line
+            ctx.fillRect(x + TILE_SIZE / 2 - 2, y + 4, 4, TILE_SIZE - 8); // Vertical line
+            ctx.fillRect(x + TILE_SIZE - 8, y + 4, 4, TILE_SIZE - 8); // Right edge shadow
+            ctx.fillRect(x + 4, y + TILE_SIZE - 8, TILE_SIZE - 8, 4); // Bottom edge shadow
+        }
+
+        /**
+         * Draws a pixelated castle wall segment.
+         * @param {number} x - X coordinate of the tile (screen).
+         * @param {number} y - Y coordinate of the tile (screen).
+         */
+        function drawCastleWall(x, y) {
+            ctx.fillStyle = '#606060'; // Grey stone
+            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            ctx.fillStyle = '#404040'; // Darker for texture
+            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.fillStyle = '#808080'; // Lighter for highlights
+            ctx.fillRect(x, y, 2, TILE_SIZE);
+            ctx.fillRect(x, y, TILE_SIZE, 2);
+        }
+
+        /**
+         * Draws a pixelated hut.
+         * @param {number} x - X coordinate of the tile (screen).
+         * @param {number} y - Y coordinate of the tile (screen).
+         */
+        function drawHut(x, y) {
+            // Base of the hut (wood)
+            ctx.fillStyle = '#8b4513'; // SaddleBrown
+            ctx.fillRect(x, y + TILE_SIZE / 2, TILE_SIZE, TILE_SIZE / 2);
+            ctx.fillStyle = '#6a3a1a'; // Darker brown for planks
+            ctx.fillRect(x + 2, y + TILE_SIZE / 2 + 2, TILE_SIZE - 4, 4);
+            ctx.fillRect(x + 2, y + TILE_SIZE / 2 + 8, TILE_SIZE - 4, 4);
+
+            // Roof (darker, triangular)
+            ctx.fillStyle = '#5a2a1a'; // Darker brown for roof
+            ctx.beginPath();
+            ctx.moveTo(x, y + TILE_SIZE / 2);
+            ctx.lineTo(x + TILE_SIZE / 2, y);
+            ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Door (small rectangle)
+            ctx.fillStyle = '#4a2a1a'; // Even darker brown for door
+            ctx.fillRect(x + TILE_SIZE / 2 - 4, y + TILE_SIZE / 2 + 8, 8, TILE_SIZE / 2 - 8);
+        }
+
+
+        /**
+         * Draws the player as a cooler 8-bit wizard with animation.
+         * Player is drawn at the center of the canvas, relative to the camera.
+         */
+        function drawPlayer() {
+            const px = player.x - cameraX; // Player's screen X position
+            let py = player.y - cameraY; // Player's screen Y position
+            const size = PLAYER_SIZE;
+
+            // Apply bobbing animation for walking
+            if (player.isMoving) {
+                py += (player.animationFrame === 0) ? 0 : 2; // Simple up/down bob
+            }
+
+            // Base colors for the new design
+            const baseCloakColor = '#3a5a7a'; // Dark Blue-Grey for cloak (inspired by image_4bfdb0.png)
+            const baseBodyColor = '#2a3a4a'; // Darker blue-grey for body
+            const baseStaffColor = '#a0a0a0'; // Grey for staff
+            const baseStaffOrbColor = '#ffffff'; // White for staff orb
+            const skinColor = '#fce8a8'; // Skin tone
+            const wingColor = '#e0e0e0'; // Light grey for wings
+
+            // Determine current colors based on casting state and animation progress
+            let currentCloakColor = baseCloakColor;
+            let currentBodyColor = baseBodyColor;
+            let currentStaffColor = baseStaffColor;
+            let currentStaffOrbColor = baseStaffOrbColor;
+
+            if (player.isCasting) {
+                const progress = 1 - (player.castAnimationTimer / player.castAnimationDuration); // 0 to 1
+                let targetCloakColor, targetBodyColor, targetStaffOrbColor;
+
+                if (player.castingSpellType === 'fireball') {
+                    targetCloakColor = '#ff4500'; // OrangeRed for Fireball
+                    targetBodyColor = '#550000';
+                    targetStaffOrbColor = '#ff8c00'; // DarkOrange
+                } else if (player.castingSpellType === 'iceShard') {
+                    targetCloakColor = '#4682b4'; // SteelBlue for Ice Shard
+                    targetBodyColor = '#2a3a4a';
+                    targetStaffOrbColor = '#87cefa'; // LightSkyBlue
+                }
+
+                currentCloakColor = interpolateColor(baseCloakColor, targetCloakColor, progress);
+                currentBodyColor = interpolateColor(baseBodyColor, targetBodyColor, progress);
+                currentStaffOrbColor = interpolateColor(baseStaffOrbColor, targetStaffOrbColor, progress);
+            }
+
+            // Wings (behind the player)
+            ctx.fillStyle = wingColor;
+            ctx.fillRect(px - size * 0.6, py - size * 0.3, size * 0.3, size * 0.6); // Left wing base
+            ctx.fillRect(px + size * 0.3, py - size * 0.3, size * 0.3, size * 0.6); // Right wing base
+            ctx.fillRect(px - size * 0.7, py - size * 0.4, size * 0.2, size * 0.4); // Left wing tip
+            ctx.fillRect(px + size * 0.5, py - size * 0.4, size * 0.2, size * 0.4); // Right wing tip
+
+            // Cloak (hood and main cloak)
+            ctx.fillStyle = currentCloakColor;
+            // Hood
+            ctx.fillRect(px - size * 0.25, py - size * 0.5, size * 0.5, size * 0.4);
+            ctx.fillRect(px - size * 0.35, py - size * 0.2, size * 0.7, size * 0.3); // Hood sides
+
+            // Main cloak body
+            ctx.fillRect(px - size * 0.4, py, size * 0.8, size * 0.75);
+            ctx.fillStyle = darkenColor(currentCloakColor, 20); // Cloak shadow
+            ctx.fillRect(px - size * 0.3, py + 4, size * 0.6, size * 0.75 - 4);
+
+            // Body (under cloak)
+            ctx.fillStyle = currentBodyColor;
+            ctx.fillRect(px - size * 0.15, py + size * 0.2, size * 0.3, size * 0.5);
+
+            // Head (face visible under hood)
+            ctx.fillStyle = skinColor;
+            ctx.fillRect(px - size * 0.1, py - size * 0.2, size * 0.2, size * 0.25);
+
+            // Eyes (simple pixels)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(px - 4, py - size * 0.15, 2, 2);
+            ctx.fillRect(px + 2, py - size * 0.15, 2, 2);
+
+            // Staff (held to the side)
+            ctx.fillStyle = currentStaffColor;
+            ctx.fillRect(px + size * 0.3, py - size * 0.5, 4, size); // Staff pole
+            ctx.fillStyle = currentStaffOrbColor; // Staff orb
+            ctx.fillRect(px + size * 0.3 - 2, py - size * 0.5 - 2, 8, 8); // Orb glow
+            ctx.fillStyle = darkenColor(currentStaffOrbColor, 50); // Orb core
+            ctx.fillRect(px + size * 0.3, py - size * 0.5, 4, 4); // Orb core
+
+            // Legs (simple, animating)
+            ctx.fillStyle = '#6b4a2a'; // Brown for boots/pants
+            if (player.animationFrame === 0) {
+                ctx.fillRect(px - size * 0.15, py + size * 0.7, size * 0.1, size * 0.2); // Left leg forward
+                ctx.fillRect(px + size * 0.05, py + size * 0.65, size * 0.1, size * 0.25); // Right leg back
+            } else {
+                ctx.fillRect(px - size * 0.15, py + size * 0.65, size * 0.1, size * 0.25); // Left leg back
+                ctx.fillRect(px + size * 0.05, py + size * 0.7, size * 0.1, size * 0.2); // Right leg forward
+            }
+        }
+
+
+        /**
+         * Draws all enemies with 8-bit shapes, adjusted by camera.
+         * Also draws off-screen indicators.
+         */
+        function drawEnemy() {
+            for (const enemy of enemies) {
+                const ex = enemy.x - cameraX; // Adjust for camera
+                const ey = enemy.y - cameraY; // Adjust for camera
+                const enemySize = ENEMY_SIZE;
+
+                // Check if enemy is on screen
+                const isVisible = (ex + enemySize / 2 > 0 && ex - enemySize / 2 < CANVAS_WIDTH &&
+                                   ey + enemySize / 2 > 0 && ey - enemySize / 2 < CANVAS_HEIGHT);
+
+                if (isVisible) {
+                    // Draw based on enemy type
+                    switch (enemy.type) {
+                        case "golem":
+                            drawGolem(ex, ey, enemySize);
+                            break;
+                        case "sprite":
+                            drawSprite(ex, ey, enemySize);
+                            break;
+                        case "bat":
+                            drawBat(ex, ey, enemySize);
+                            break;
+                        case "slime":
+                            drawSlime(ex, ey, enemySize);
+                            break;
+                        case "goblin": // New enemy type
+                            drawGoblin(ex, ey, enemySize);
+                            break;
+                        case "boar": // New enemy type
+                            drawBoar(ex, ey, enemySize);
+                            break;
+                        case "skeleton": // New enemy type
+                            drawSkeleton(ex, ey, enemySize);
+                            break;
+                        case "ghost": // New enemy type
+                            drawGhost(ex, ey, enemySize);
+                            break;
+                        default:
+                            // Fallback to generic square
+                            ctx.fillStyle = enemy.color || '#888888';
+                            ctx.fillRect(ex - enemySize / 2, ey - enemySize / 2, enemySize, enemySize);
+                    }
+
+                    // Draw enemy name above it
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px "Press Start 2P"'; /* 8-bit font for enemy name */
+                    ctx.textAlign = 'center';
+                    ctx.fillText(enemy.name, ex, ey - enemySize / 2 - 10);
+
+                    // HP Bar
+                    const hpBarWidth = (enemy.hp / enemy.maxHp) * enemySize;
+                    ctx.fillStyle = '#550000'; // Dark red background for HP bar
+                    ctx.fillRect(ex - enemySize / 2, ey - enemySize / 2 - 5, enemySize, 5);
+                    ctx.fillStyle = '#00ff00'; // Lime green for current HP
+                    ctx.fillRect(ex - enemySize / 2, ey - enemySize / 2 - 5, hpBarWidth, 5);
+                } else {
+                    // Draw off-screen indicator
+                    drawEnemyIndicator(enemy.x, enemy.y);
+                }
+            }
+        }
+
+        /**
+         * Draws an indicator for an off-screen enemy.
+         * @param {number} enemyWorldX - Enemy's X position in world coordinates.
+         * @param {number} enemyWorldY - Enemy's Y position in world coordinates.
+         */
+        function drawEnemyIndicator(enemyWorldX, enemyWorldY) {
+            const playerScreenX = CANVAS_WIDTH / 2;
+            const playerScreenY = CANVAS_HEIGHT / 2;
+
+            const enemyScreenX = enemyWorldX - cameraX;
+            const enemyScreenY = enemyWorldY - cameraY;
+
+            // Calculate vector from player (center of screen) to enemy
+            const dx = enemyScreenX - playerScreenX;
+            const dy = enemyScreenY - playerScreenY;
+            const angle = Math.atan2(dy, dx);
+
+            const indicatorSize = 10;
+            const padding = 10; // Padding from canvas edge
+
+            let ix, iy; // Indicator position
+
+            // Determine intersection with canvas bounds
+            // This is a simplified approach; for perfect accuracy, raycasting to canvas edges is needed.
+            // For 8-bit style, a simple clamp to edges is often sufficient.
+
+            // Clamp to a rectangle slightly smaller than canvas to avoid drawing exactly on border
+            const clampX = Math.max(padding, Math.min(CANVAS_WIDTH - padding, enemyScreenX));
+            const clampY = Math.max(padding, Math.min(CANVAS_HEIGHT - padding, enemyScreenY));
+
+            // If enemy is off-screen, place indicator on the edge
+            if (enemyScreenX < padding || enemyScreenX > CANVAS_WIDTH - padding ||
+                enemyScreenY < padding || enemyScreenY > CANVAS_HEIGHT - padding) {
+
+                // Calculate position on the canvas boundary
+                // This logic needs to be robust for all quadrants
+                const halfWidth = CANVAS_WIDTH / 2;
+                const halfHeight = CANVAS_HEIGHT / 2;
+
+                const m = dy / dx; // Slope
+                const b = playerScreenY - m * playerScreenX; // Y-intercept
+
+                // Check vertical boundaries (left/right edges)
+                if (dx < 0) { // Left side
+                    ix = padding;
+                    iy = m * ix + b;
+                } else { // Right side
+                    ix = CANVAS_WIDTH - padding;
+                    iy = m * ix + b;
+                }
+
+                // Check horizontal boundaries (top/bottom edges)
+                // If the calculated Y is out of bounds, then the indicator is on top/bottom
+                if (iy < padding || iy > CANVAS_HEIGHT - padding) {
+                    if (dy < 0) { // Top side
+                        iy = padding;
+                        ix = (iy - b) / m;
+                    } else { // Bottom side
+                        iy = CANVAS_HEIGHT - padding;
+                        ix = (iy - b) / m;
+                    }
+                }
+
+                // Final clamp to ensure it's strictly within the padded area
+                ix = Math.max(padding, Math.min(CANVAS_WIDTH - padding, ix));
+                iy = Math.max(padding, Math.min(CANVAS_HEIGHT - padding, iy));
+
+                // Draw a small red pixelated arrow/triangle
+                ctx.save(); // Save current canvas state
+                ctx.translate(ix, iy); // Move origin to indicator position
+                ctx.rotate(angle); // Rotate to point towards enemy
+
+                ctx.fillStyle = '#ff0000'; // Red color
+                ctx.fillRect(-indicatorSize / 2, -indicatorSize / 2, indicatorSize, indicatorSize); // Simple square for 8-bit arrow
+
+                ctx.restore(); // Restore canvas state
+            }
+        }
+
+
+        // --- Specific Enemy Drawing Functions (8-bit style) ---
+
+        function drawGolem(x, y, size) {
+            const golemColor = '#605040'; // Brownish grey
+            const darkGolemColor = '#403020'; // Darker shade
+            const lightGolemColor = '#807060'; // Lighter shade
+
+            const gx = x - size / 2;
+            const gy = y - size / 2;
+
+            // Main body (more blocky, textured)
+            ctx.fillStyle = golemColor;
+            ctx.fillRect(gx + 4, gy + 8, size - 8, size - 8);
+            ctx.fillRect(gx + 8, gy + 4, size - 16, size - 8);
+
+            // Head
+            ctx.fillStyle = darkGolemColor;
+            ctx.fillRect(gx + size * 0.25, gy, size * 0.5, size * 0.3);
+
+            // Eyes (glowing red pixels)
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(gx + size * 0.35, gy + size * 0.1, 4, 4);
+            ctx.fillRect(gx + size * 0.65 - 4, gy + size * 0.1, 4, 4);
+
+            // Arms (thick, blocky)
+            ctx.fillStyle = golemColor;
+            ctx.fillRect(gx - 8, gy + size * 0.3, 12, size * 0.6); // Left arm
+            ctx.fillRect(gx + size - 4, gy + size * 0.3, 12, size * 0.6); // Right arm
+
+            // Cracks/texture
+            ctx.fillStyle = darkGolemColor;
+            ctx.fillRect(gx + 10, gy + 15, 6, 2);
+            ctx.fillRect(gx + size - 16, gy + 25, 2, 6);
+            ctx.fillRect(gx + 5, gy + size - 10, 3, 3);
+            ctx.fillStyle = lightGolemColor; // Highlights
+            ctx.fillRect(gx + 6, gy + 10, 2, 2);
+            ctx.fillRect(gx + size - 10, gy + 18, 2, 2);
+        }
+
+        function drawSprite(x, y, size) {
+            const spriteColor = '#2ecc71'; // Green
+            const darkSpriteColor = '#1a7a4a';
+            const lightSpriteColor = '#32cd32';
+            const wingColor = 'rgba(173, 216, 230, 0.7)'; // Light blue, semi-transparent
+
+            const sx = x - size / 2;
+            const sy = y - size / 2;
+
+            // Body (more defined, slightly pear-shaped)
+            ctx.fillStyle = spriteColor;
+            ctx.fillRect(sx + 8, sy + 12, size - 16, size - 20);
+            ctx.fillRect(sx + 12, sy + 8, size - 24, size - 16);
+
+            // Head (rounded)
+            ctx.fillStyle = lightSpriteColor;
+            ctx.fillRect(sx + size / 4, sy + 4, size / 2, size / 4);
+            ctx.fillRect(sx + size / 4 + 2, sy + 2, size / 2 - 4, 2); // Top curve
+
+            // Eyes
+            ctx.fillStyle = 'black';
+            ctx.fillRect(sx + size * 0.35, sy + size * 0.15, 2, 2);
+            ctx.fillRect(sx + size * 0.65 - 2, sy + size * 0.15, 2, 2);
+
+            // Wings (more detailed, feathery look)
+            ctx.fillStyle = wingColor;
+            // Left wing
+            ctx.fillRect(sx - 10, sy + 10, 10, 18);
+            ctx.fillRect(sx - 14, sy + 14, 4, 10);
+            // Right wing
+            ctx.fillRect(sx + size, sy + 10, 10, 18);
+            ctx.fillRect(sx + size + 10, sy + 14, 4, 10);
+
+            // Antennae
+            ctx.fillStyle = darkSpriteColor;
+            ctx.fillRect(sx + size * 0.45, sy, 2, 6);
+            ctx.fillRect(sx + size * 0.55 - 2, sy, 2, 6);
+            ctx.fillRect(sx + size * 0.45 - 2, sy - 2, 6, 2); // Tips
+            ctx.fillRect(sx + size * 0.55 - 4, sy - 2, 6, 2);
+        }
+
+        function drawBat(x, y, size) {
+            const batColor = '#444444'; // Dark grey
+            const darkBatColor = '#222222';
+            const eyeColor = '#ffcc00'; // Yellowish eyes
+
+            const bx = x - size / 2;
+            const by = y - size / 2;
+
+            // Body (more rounded)
+            ctx.fillStyle = batColor;
+            ctx.fillRect(bx + size * 0.3, by + size * 0.3, size * 0.4, size * 0.5);
+            ctx.fillRect(bx + size * 0.35, by + size * 0.25, size * 0.3, size * 0.1); // Upper body curve
+
+            // Head
+            ctx.fillRect(bx + size * 0.35, by + size * 0.1, size * 0.3, size * 0.2);
+
+            // Ears (pointed)
+            ctx.fillStyle = darkBatColor;
+            ctx.beginPath();
+            ctx.moveTo(bx + size * 0.3, by);
+            ctx.lineTo(bx + size * 0.3 + 6, by + 6);
+            ctx.lineTo(bx + size * 0.3, by + 6);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(bx + size * 0.7, by);
+            ctx.lineTo(bx + size * 0.7 - 6, by + 6);
+            ctx.lineTo(bx + size * 0.7, by + 6);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes (glowing)
+            ctx.fillStyle = eyeColor;
+            ctx.fillRect(bx + size * 0.4, by + size * 0.15, 2, 2);
+            ctx.fillRect(bx + size * 0.6 - 2, by + size * 0.15, 2, 2);
+
+            // Wings (more segmented, bat-like)
+            ctx.fillStyle = batColor;
+            // Left wing
+            ctx.beginPath();
+            ctx.moveTo(bx, by + size * 0.3);
+            ctx.lineTo(bx - 10, by + 5); // Pointed top
+            ctx.lineTo(bx + 10, by + 20); // First segment joint
+            ctx.lineTo(bx, by + size * 0.7);
+            ctx.closePath();
+            ctx.fill();
+
+            // Right wing (mirror of left)
+            ctx.beginPath();
+            ctx.moveTo(bx + size, by + size * 0.3);
+            ctx.lineTo(bx + size + 10, by + 5);
+            ctx.lineTo(bx + size - 10, by + 20);
+            ctx.lineTo(bx + size, by + size * 0.7);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawSlime(x, y, size) {
+            const slimeColor = '#76b900'; // Greenish
+            const darkSlimeColor = '#568b00';
+            const lightSlimeColor = '#96d920';
+            const eyeColor = 'white';
+            const pupilColor = 'black';
+
+            const sx = x - size / 2;
+            const sy = y - size / 2;
+
+            // Main blob (more irregular, wobbly)
+            ctx.fillStyle = slimeColor;
+            ctx.fillRect(sx + 4, sy + 8, size - 8, size - 8);
+            ctx.fillRect(sx + 8, sy + 4, size - 16, size - 8);
+            ctx.fillRect(sx + 2, sy + 12, size - 4, size - 24); // Wider base
+
+            // Top blob/peak
+            ctx.fillStyle = lightSlimeColor;
+            ctx.fillRect(sx + size * 0.3, sy, size * 0.4, size * 0.3);
+            ctx.fillRect(sx + size * 0.35, sy - 2, size * 0.3, 2); // Peak highlight
+
+            // Eyes (white with black pupils)
+            ctx.fillStyle = eyeColor;
+            ctx.fillRect(sx + size * 0.3, sy + size * 0.4, 6, 6);
+            ctx.fillRect(sx + size * 0.7 - 6, sy + size * 0.4, 6, 6);
+
+            ctx.fillStyle = pupilColor;
+            ctx.fillRect(sx + size * 0.3 + 2, sy + size * 0.4 + 2, 2, 2);
+            ctx.fillRect(sx + size * 0.7 - 4, sy + size * 0.4 + 2, 2, 2);
+
+            // Mouth (simple line)
+            ctx.fillStyle = darkSlimeColor;
+            ctx.fillRect(sx + size * 0.4, sy + size * 0.65, size * 0.2, 2);
+
+            // Drips/texture
+            ctx.fillStyle = darkSlimeColor;
+            ctx.fillRect(sx + 8, sy + size - 4, 4, 4);
+            ctx.fillRect(sx + size - 12, sy + size - 6, 4, 6);
+        }
+
+        /**
+         * Draws a pixelated goblin.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Size of the enemy.
+         */
+        function drawGoblin(x, y, size) {
+            const goblinSkin = '#3cb371'; // MediumSeaGreen
+            const goblinCloth = '#8b4513'; // SaddleBrown
+            const goblinEyes = '#ff0000'; // Red
+            const goblinTeeth = '#ffffff'; // White
+
+            const gx = x - size / 2;
+            const gy = y - size / 2;
+
+            // Body
+            ctx.fillStyle = goblinCloth;
+            ctx.fillRect(gx + size * 0.2, gy + size * 0.4, size * 0.6, size * 0.5);
+
+            // Head
+            ctx.fillStyle = goblinSkin;
+            ctx.fillRect(gx + size * 0.25, gy + size * 0.1, size * 0.5, size * 0.4);
+            ctx.fillRect(gx + size * 0.3, gy, size * 0.4, size * 0.2); // Top of head
+
+            // Ears (pointed)
+            ctx.beginPath();
+            ctx.moveTo(gx + size * 0.25, gy + size * 0.2);
+            ctx.lineTo(gx + size * 0.15, gy + size * 0.1);
+            ctx.lineTo(gx + size * 0.25, gy + size * 0.1);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(gx + size * 0.75, gy + size * 0.2);
+            ctx.lineTo(gx + size * 0.85, gy + size * 0.1);
+            ctx.lineTo(gx + size * 0.75, gy + size * 0.1);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = goblinEyes;
+            ctx.fillRect(gx + size * 0.35, gy + size * 0.25, 4, 4);
+            ctx.fillRect(gx + size * 0.65 - 4, gy + size * 0.25, 4, 4);
+
+            // Mouth (jagged)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(gx + size * 0.4, gy + size * 0.35, size * 0.2, 2);
+            ctx.fillStyle = goblinTeeth;
+            ctx.fillRect(gx + size * 0.4, gy + size * 0.37, 2, 2);
+            ctx.fillRect(gx + size * 0.6 - 2, gy + size * 0.37, 2, 2);
+
+            // Arms
+            ctx.fillStyle = goblinSkin;
+            ctx.fillRect(gx + size * 0.1, gy + size * 0.5, 6, size * 0.3);
+            ctx.fillRect(gx + size * 0.9 - 6, gy + size * 0.5, 6, size * 0.3);
+
+            // Legs
+            ctx.fillStyle = goblinCloth;
+            ctx.fillRect(gx + size * 0.3, gy + size * 0.8, 8, size * 0.2);
+            ctx.fillRect(gx + size * 0.7 - 8, gy + size * 0.8, 8, size * 0.2);
+        }
+
+        /**
+         * Draws a pixelated boar.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Size of the enemy.
+         */
+        function drawBoar(x, y, size) {
+            const boarBody = '#8b4513'; // SaddleBrown
+            const boarSnout = '#6a3a1a'; // Darker Brown
+            const boarTusk = '#ffffff'; // White
+            const boarEye = '#000000'; // Black
+
+            const bx = x - size / 2;
+            const by = y - size / 2;
+
+            // Body
+            ctx.fillStyle = boarBody;
+            ctx.fillRect(bx + size * 0.1, by + size * 0.3, size * 0.8, size * 0.5);
+            ctx.fillRect(bx + size * 0.2, by + size * 0.2, size * 0.6, size * 0.2); // Upper curve
+
+            // Head
+            ctx.fillRect(bx + size * 0.6, by + size * 0.2, size * 0.3, size * 0.3);
+
+            // Snout
+            ctx.fillStyle = boarSnout;
+            ctx.fillRect(bx + size * 0.75, by + size * 0.3, size * 0.15, size * 0.15);
+
+            // Tusks
+            ctx.fillStyle = boarTusk;
+            ctx.beginPath();
+            ctx.moveTo(bx + size * 0.85, by + size * 0.35);
+            ctx.lineTo(bx + size * 0.95, by + size * 0.25);
+            ctx.lineTo(bx + size * 0.90, by + size * 0.35);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(bx + size * 0.85, by + size * 0.45);
+            ctx.lineTo(bx + size * 0.95, by + size * 0.55);
+            ctx.lineTo(bx + size * 0.90, by + size * 0.45);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eye
+            ctx.fillStyle = boarEye;
+            ctx.fillRect(bx + size * 0.7, by + size * 0.25, 2, 2);
+
+            // Legs
+            ctx.fillStyle = boarBody;
+            ctx.fillRect(bx + size * 0.2, by + size * 0.8, 6, size * 0.2);
+            ctx.fillRect(bx + size * 0.4, by + size * 0.8, 6, size * 0.2);
+            ctx.fillRect(bx + size * 0.6, by + size * 0.8, 6, size * 0.2);
+            ctx.fillRect(bx + size * 0.8, by + size * 0.8, 6, size * 0.2);
+        }
+
+        /**
+         * Draws a pixelated skeleton.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Size of the enemy.
+         */
+        function drawSkeleton(x, y, size) {
+            const boneColor = '#e0e0e0'; // Light grey
+            const darkBoneColor = '#a0a0a0'; // Darker grey
+            const eyeSocket = '#000000'; // Black
+
+            const sx = x - size / 2;
+            const sy = y - size / 2;
+
+            // Head (skull)
+            ctx.fillStyle = boneColor;
+            ctx.fillRect(sx + size * 0.3, sy + size * 0.1, size * 0.4, size * 0.3);
+            ctx.fillRect(sx + size * 0.35, sy + size * 0.4, size * 0.3, size * 0.1); // Jaw
+
+            // Eye sockets
+            ctx.fillStyle = eyeSocket;
+            ctx.fillRect(sx + size * 0.35, sy + size * 0.2, 4, 4);
+            ctx.fillRect(sx + size * 0.65 - 4, sy + size * 0.2, 4, 4);
+
+            // Body (rib cage)
+            ctx.fillStyle = boneColor;
+            ctx.fillRect(sx + size * 0.35, sy + size * 0.5, size * 0.3, size * 0.3);
+            ctx.fillStyle = darkBoneColor; // Ribs
+            ctx.fillRect(sx + size * 0.3, sy + size * 0.55, size * 0.4, 2);
+            ctx.fillRect(sx + size * 0.3, sy + size * 0.65, size * 0.4, 2);
+
+            // Arms
+            ctx.fillStyle = boneColor;
+            ctx.fillRect(sx + size * 0.2, sy + size * 0.5, 4, size * 0.3);
+            ctx.fillRect(sx + size * 0.8 - 4, sy + size * 0.5, 4, size * 0.3);
+
+            // Legs
+            ctx.fillRect(sx + size * 0.3, sy + size * 0.8, 4, size * 0.2);
+            ctx.fillRect(sx + size * 0.7 - 4, sy + size * 0.8, 4, size * 0.2);
+        }
+
+        /**
+         * Draws a pixelated ghost.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Size of the enemy.
+         */
+        function drawGhost(x, y, size) {
+            const ghostColor = 'rgba(200, 200, 255, 0.7)'; // Light blue, semi-transparent
+            const eyeColor = '#000000'; // Black
+            const mouthColor = '#ff0000'; // Red
+
+            const gx = x - size / 2;
+            const gy = y - size / 2;
+
+            // Body (wavy bottom)
+            ctx.fillStyle = ghostColor;
+            ctx.beginPath();
+            ctx.moveTo(gx + size * 0.2, gy + size * 0.2);
+            ctx.lineTo(gx + size * 0.8, gy + size * 0.2);
+            ctx.lineTo(gx + size * 0.8, gy + size * 0.8);
+            ctx.lineTo(gx + size * 0.7, gy + size * 0.9);
+            ctx.lineTo(gx + size * 0.5, gy + size * 0.8);
+            ctx.lineTo(gx + size * 0.3, gy + size * 0.9);
+            ctx.lineTo(gx + size * 0.2, gy + size * 0.8);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = eyeColor;
+            ctx.fillRect(gx + size * 0.35, gy + size * 0.35, 4, 4);
+            ctx.fillRect(gx + size * 0.65 - 4, gy + size * 0.35, 4, 4);
+
+            // Mouth
+            ctx.fillStyle = mouthColor;
+            ctx.fillRect(gx + size * 0.4, gy + size * 0.5, size * 0.2, 2);
+        }
+
+
+        /**
+         * Draws the Top-Left UI (Equipped, Inventory, and Gold).
+         */
+        function drawTopLeftUI() {
+            const uiWidth = 200; // Width of the UI panel
+            const padding = 10;
+            const startX = padding; // Changed to left
+            let currentY = padding;
+            const lineHeight = 12;
+
+            ctx.font = '10px "Press Start 2P"';
+            ctx.textAlign = 'left'; // Changed to left
+
+            // Gold Display
+            ctx.fillStyle = 'gold';
+            ctx.fillText(`GOLD: ${player.gold}`, startX, currentY);
+            currentY += lineHeight + 10; // Add some space after gold
+
+            // Equipped Items Display
+            ctx.fillStyle = 'white';
+            ctx.fillText("EQUIPPED:", startX, currentY);
+            currentY += lineHeight;
+
+            const equippedItems = player.equipped;
+            for (const slot of ['weapon', 'helmet', 'chestplate', 'pants', 'boots']) { // Iterate in a preferred order
+                const item = equippedItems[slot];
+                let itemText = `${slot.toUpperCase()}: `;
+                if (item) {
+                    itemText += `${item.name}`;
+                    if (item.healthBonus) itemText += ` (+${item.healthBonus} HP)`;
+                    if (item.damage) itemText += ` (+${item.damage} DMG)`;
+                } else {
+                    itemText += "None";
+                }
+                ctx.font = '8px "Press Start 2P"';
+                ctx.fillText(itemText, startX, currentY);
+                currentY += lineHeight;
+            }
+
+            currentY += 10; // Space between sections
+
+            // Inventory Display
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillText("INVENTORY:", startX, currentY);
+            currentY += lineHeight;
+
+            if (player.inventory.length > 0) {
+                for (let i = 0; i < Math.min(player.inventory.length, 5); i++) { // Show up to 5 items
+                    const item = player.inventory[i];
+                    let itemText = `- ${item.name}`;
+                    if (item.healthBonus) itemText += ` (+${item.healthBonus} HP)`;
+                    if (item.damage) itemText += ` (+${item.damage} DMG)`;
+                    ctx.font = '8px "Press Start 2P"';
+                    ctx.fillText(itemText, startX, currentY + (i * lineHeight));
+                }
+                if (player.inventory.length > 5) {
+                    ctx.fillText(`...and ${player.inventory.length - 5} more`, startX, currentY + (5 * lineHeight));
+                }
+            } else {
+                ctx.font = '8px "Press Start 2P"';
+                ctx.fillText("- Empty -", startX, currentY);
+            }
+            // Return the y position after drawing these elements, so messages can start below
+            return currentY + (Math.min(player.inventory.length, 5) * lineHeight) + (player.inventory.length > 5 ? lineHeight : 0) + 10;
+        }
+
+        /**
+         * Draws floating damage numbers.
+         */
+        function drawDamageNumbers() {
+            ctx.font = '12px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            for (const num of damageNumbers) {
+                const screenX = num.x - cameraX;
+                const screenY = num.y - cameraY;
+                ctx.fillStyle = num.color;
+                ctx.fillText(num.value, screenX, screenY);
+            }
+        }
+
+        /**
+         * Draws game messages on the canvas.
+         * @param {number} startY - The Y coordinate to start drawing messages from.
+         */
+        function drawGameMessages(startY) {
+            ctx.font = '10px "Press Start 2P"'; /* 8-bit font for messages */
+            ctx.textAlign = 'right'; // Align to the right
+            const messageX = CANVAS_WIDTH - 10; // Start from right edge, move left
+            const messageLineHeight = 15;
+
+            // Draw messages from oldest to newest, starting from startY
+            gameMessages.forEach((msg, index) => {
+                ctx.fillStyle = msg.color;
+                ctx.fillText(msg.text, messageX, startY + (index * messageLineHeight));
+            });
+        }
+
+        /**
+         * Draws the action bar at the bottom center of the canvas, Diablo style.
+         */
+        function drawActionBar() {
+            const barWidth = 400; // Total width of the action bar
+            const barHeight = 80; // Total height of the action bar
+            const padding = 10;
+
+            const startX = (CANVAS_WIDTH / 2) - (barWidth / 2);
+            const startY = CANVAS_HEIGHT - barHeight - padding;
+
+            // Background for the action bar
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(startX, startY, barWidth, barHeight);
+            ctx.strokeStyle = '#4a4a7a';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, barWidth, barHeight);
+
+            // --- Left Orb (HP) ---
+            const orbRadius = ORB_RADIUS; // Use the global constant
+            const hpOrbX = startX + padding + orbRadius;
+            const hpOrbY = startY + barHeight / 2;
+
+            // Orb background
+            ctx.beginPath();
+            ctx.arc(hpOrbX, hpOrbY, orbRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#550000'; // Dark red background
+            ctx.fill();
+            ctx.strokeStyle = '#ff0000'; // Red border
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Save the current canvas state before applying clip
+            ctx.save();
+            // Create a clipping path for the HP orb
+            ctx.beginPath();
+            ctx.arc(hpOrbX, hpOrbY, orbRadius, 0, Math.PI * 2);
+            ctx.clip(); // All subsequent drawing will be clipped to this circle
+
+            // Liquid fill (HP) with animation
+            const hpFillHeight = orbRadius * 2 * (player.hp / player.maxHp);
+            // Add a sine wave offset for liquid animation
+            const hpWaveOffset = Math.sin(waveAnimationTime * 0.1 + hpOrbX * 0.01) * 2; // Unique phase for each orb
+            const hpLiquidY = hpOrbY + orbRadius - hpFillHeight + hpWaveOffset;
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.8)'; // Red liquid
+            ctx.fillRect(hpOrbX - orbRadius, hpLiquidY, orbRadius * 2, orbRadius * 2); // Draw full height, it will be clipped
+
+            // Draw HP bubbles
+            for (const bubble of hpBubbles) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${bubble.alpha})`; // White, fading
+                ctx.beginPath();
+                ctx.arc(hpOrbX + bubble.x, hpOrbY + orbRadius - (hpFillHeight - bubble.y), bubble.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Restore canvas state to remove the clipping path
+            ctx.restore();
+
+            // Text for HP inside orb
+            ctx.fillStyle = 'white';
+            ctx.font = '12px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${player.hp}/${player.maxHp}`, hpOrbX, hpOrbY + 5);
+
+            // --- Right Orb (XP) ---
+            const xpOrbX = startX + barWidth - padding - orbRadius;
+            const xpOrbY = startY + barHeight / 2;
+
+            // Orb background
+            ctx.beginPath();
+            ctx.arc(xpOrbX, xpOrbY, orbRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#333333'; // Dark grey background
+            ctx.fill();
+            ctx.strokeStyle = '#00ff00'; // Green border
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Save the current canvas state before applying clip
+            ctx.save();
+            // Create a clipping path for the XP orb
+            ctx.beginPath();
+            ctx.arc(xpOrbX, xpOrbY, orbRadius, 0, Math.PI * 2);
+            ctx.clip(); // All subsequent drawing will be clipped to this circle
+
+            // Liquid fill (XP) with animation
+            const xpFillHeight = orbRadius * 2 * (player.xp / player.xpToNextLevel);
+            const xpWaveOffset = Math.sin(waveAnimationTime * 0.1 + xpOrbX * 0.01) * 2; // Unique phase for each orb
+            const xpLiquidY = xpOrbY + orbRadius - xpFillHeight + xpWaveOffset;
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Green liquid
+            ctx.fillRect(xpOrbX - orbRadius, xpLiquidY, orbRadius * 2, orbRadius * 2); // Draw full height, it will be clipped
+
+            // Draw XP bubbles
+            for (const bubble of xpBubbles) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${bubble.alpha})`; // White, fading
+                ctx.beginPath();
+                ctx.arc(xpOrbX + bubble.x, xpOrbY + orbRadius - (xpFillHeight - bubble.y), bubble.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Restore canvas state to remove the clipping path
+            ctx.restore();
+
+            // Text for XP inside orb
+            ctx.fillStyle = 'white';
+            ctx.font = '12px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillText(`LVL ${player.level}`, xpOrbX, xpOrbY - 5);
+            ctx.fillText(`${player.xp}/${player.xpToNextLevel}`, xpOrbX, xpOrbY + 15);
+
+
+            // --- Spell and Utility Slots ---
+            const slotSize = 48; // Size for spell/utility slots
+            const slotPadding = 8;
+            const totalSlotsWidth = (slotSize * 4) + (slotPadding * 3); // 4 slots, 3 paddings
+            // Center slots between the two orbs
+            const slotsStartX = startX + (barWidth / 2) - (totalSlotsWidth / 2);
+            const slotsStartY = startY + (barHeight / 2) - (slotSize / 2);
+
+            const actions = [
+                { name: 'Fireball', key: '1', type: 'spell', spellName: 'fireball', x: slotsStartX, y: slotsStartY, icon: 'fire' },
+                { name: 'Ice Shard', key: '2', type: 'spell', spellName: 'iceShard', x: slotsStartX + slotSize + slotPadding, y: slotsStartY, icon: 'ice' },
+                { name: 'Melee', key: 'E', type: 'melee', x: slotsStartX + (slotSize + slotPadding) * 2, y: slotsStartY, icon: 'sword' },
+                { name: 'Rest', key: 'R', type: 'rest', x: slotsStartX + (slotSize + slotPadding) * 3, y: slotsStartY, icon: 'potion' }
+            ];
+
+            ctx.font = '10px "Press Start 2P"';
+            ctx.textAlign = 'center';
+
+            actions.forEach(action => {
+                const itemX = action.x;
+                const itemY = action.y;
+                const radius = slotSize / 2;
+                const centerX = itemX + radius;
+                const centerY = itemY + radius;
+
+                let bgColor = '#3a3a3a'; // Base background for slot
+                let borderColor = '#6a5acd'; // Default border color
+                let iconColor = 'white';
+                let opacity = 1.0;
+                let onCooldown = false;
+                let remainingTimeSec = 0;
+
+                if (action.type === 'spell') {
+                    const spell = player.spells[action.spellName];
+                    if (spell.level === 0) {
+                        bgColor = '#222222'; // Darker gray if not unlocked
+                        borderColor = '#333333';
+                        iconColor = '#888888';
+                        opacity = 0.5;
+                    } else if (Date.now() - spell.lastCastTime < spell.cooldown) {
+                        remainingTimeSec = Math.ceil((spell.cooldown - (Date.now() - spell.lastCastTime)) / 1000);
+                        onCooldown = true;
+                    }
+                } else if (action.type === 'melee') {
+                    if (Date.now() - player.lastMeleeAttackTime < player.meleeAttackCooldown) {
+                        remainingTimeSec = Math.ceil((player.meleeAttackCooldown - (Date.now() - player.lastMeleeAttackTime)) / 1000);
+                        onCooldown = true;
+                    }
+                }
+
+                // Draw slot background (circle for spells, rectangle for others)
+                if (action.type === 'spell') {
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = bgColor;
+                    ctx.fill();
+                    ctx.strokeStyle = borderColor;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(itemX, itemY, slotSize, slotSize);
+                    ctx.strokeStyle = borderColor;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(itemX, itemY, slotSize, slotSize);
+                }
+
+                // Draw icon
+                ctx.fillStyle = iconColor;
+                ctx.globalAlpha = opacity;
+                switch(action.icon) {
+                    case 'fire':
+                        drawFireballIcon(centerX, centerY, slotSize * 0.6);
+                        break;
+                    case 'ice':
+                        drawIceShardIcon(centerX, centerY, slotSize * 0.6);
+                        break;
+                    case 'sword':
+                        drawSwordIcon(centerX, centerY, slotSize * 0.6);
+                        break;
+                    case 'potion':
+                        drawPotionIcon(centerX, centerY, slotSize * 0.6);
+                        break;
+                }
+                ctx.globalAlpha = 1.0;
+
+                // Draw cooldown overlay
+                if (onCooldown) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // Dark overlay
+                    if (action.type === 'spell') {
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(itemX, itemY, slotSize, slotSize);
+                    }
+
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(remainingTimeSec.toFixed(0), centerX, centerY + 5); // Cooldown text
+                }
+
+                // Draw keybind
+                ctx.fillStyle = 'white';
+                ctx.fillText(action.key, centerX, itemY - 5); // Keybind above slot
+            });
+        }
+
+        /**
+         * Draws a pixelated fireball icon.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Max size.
+         */
+        function drawFireballIcon(x, y, size) {
+            const halfSize = size / 2;
+            const quarterSize = size / 4;
+            ctx.fillStyle = '#ff8c00'; // Dark orange
+            ctx.fillRect(x - halfSize, y - halfSize, size, size);
+            ctx.fillStyle = '#ff4500'; // Orange red
+            ctx.fillRect(x - quarterSize, y - halfSize * 0.75, halfSize, halfSize * 1.5);
+            ctx.fillRect(x - halfSize * 0.75, y - quarterSize, halfSize * 1.5, halfSize);
+            ctx.fillStyle = '#ffff00'; // Yellow
+            ctx.fillRect(x - 2, y - 2, 4, 4); // Core
+        }
+
+        /**
+         * Draws a pixelated ice shard icon.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Max size.
+         */
+        function drawIceShardIcon(x, y, size) {
+            const halfSize = size / 2;
+            ctx.fillStyle = '#87cefa'; // Light sky blue
+            ctx.beginPath();
+            ctx.moveTo(x, y - halfSize);
+            ctx.lineTo(x + halfSize, y);
+            ctx.lineTo(x, y + halfSize);
+            ctx.lineTo(x - halfSize, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#add8e6'; // Light blue
+            ctx.beginPath();
+            ctx.moveTo(x, y - halfSize * 0.7);
+            ctx.lineTo(x + halfSize * 0.7, y);
+            ctx.lineTo(x, y + halfSize * 0.7);
+            ctx.lineTo(x - halfSize * 0.7, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x - 2, y - 2, 4, 4); // Center
+        }
+
+        /**
+         * Draws a pixelated sword icon.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Max size.
+         */
+        function drawSwordIcon(x, y, size) {
+            const halfSize = size / 2;
+            ctx.fillStyle = '#a0a0a0'; // Grey blade
+            ctx.fillRect(x - 2, y - halfSize, 4, size); // Blade
+            ctx.fillStyle = '#8b4513'; // Brown handle
+            ctx.fillRect(x - 4, y + halfSize - 10, 8, 10); // Handle
+            ctx.fillStyle = '#ffd700'; // Gold crossguard
+            ctx.fillRect(x - halfSize, y, size, 4); // Crossguard
+        }
+
+        /**
+         * Draws a pixelated potion icon.
+         * @param {number} x - Center X.
+         * @param {number} y - Center Y.
+         * @param {number} size - Max size.
+         */
+        function drawPotionIcon(x, y, size) {
+            const halfSize = size / 2;
+            ctx.fillStyle = '#ff0000'; // Red potion liquid
+            ctx.fillRect(x - halfSize * 0.4, y, halfSize * 0.8, halfSize); // Bottle body
+            ctx.fillRect(x - halfSize * 0.2, y - halfSize * 0.2, halfSize * 0.4, halfSize * 0.2); // Bottle neck
+            ctx.fillStyle = '#8b4513'; // Cork
+            ctx.fillRect(x - halfSize * 0.1, y - halfSize * 0.3, halfSize * 0.2, halfSize * 0.1);
+            ctx.strokeStyle = '#a0a0a0'; // Bottle outline
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x - halfSize * 0.4, y, halfSize * 0.8, halfSize);
+            ctx.strokeRect(x - halfSize * 0.2, y - halfSize * 0.2, halfSize * 0.4, halfSize * 0.2);
+        }
+
+        /**
+         * Draws a generic progress bar on the canvas.
+         * @param {number} x - X coordinate.
+         * @param {number} y - Y coordinate.
+         * @param {number} width - Width of the bar.
+         * @param {number} height - Height of the bar.
+         * @param {number} current - Current value.
+         * @param {number} max - Maximum value.
+         * @param {string} fillColor - Color of the filled portion.
+         * @param {string} bgColor - Color of the background portion.
+         */
+        function drawProgressBar(x, y, width, height, current, max, fillColor, bgColor) {
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(x, y, width, height);
+            const fillWidth = (current / max) * width;
+            ctx.fillStyle = fillColor;
+            ctx.fillRect(x, y, fillWidth, height);
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, width, height);
+        }
+
+        /**
+         * Draws a mini-map in the top-right corner.
+         */
+        function drawMiniMap() {
+            const mapX = CANVAS_WIDTH - MINI_MAP_SIZE - 10; // 10px padding from right
+            const mapY = 10; // 10px padding from top
+
+            // Mini-map background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(mapX, mapY, MINI_MAP_SIZE, MINI_MAP_SIZE);
+            ctx.strokeStyle = '#4a4a7a';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(mapX, mapY, MINI_MAP_SIZE, MINI_MAP_SIZE);
+
+            // Calculate scale
+            const scaleX = MINI_MAP_SIZE / (MAP_COLS * TILE_SIZE);
+            const scaleY = MINI_MAP_SIZE / (MAP_ROWS * TILE_SIZE);
+
+            // Draw map tiles
+            for (let r = 0; r < MAP_ROWS; r++) {
+                for (let c = 0; c < MAP_COLS; c++) {
+                    const tileType = gameMap[r][c];
+                    let color;
+                    switch (tileType) {
+                        case 0: color = '#4a6a3a'; break; // Grass
+                        case 1: color = '#7a6a5a'; break; // Path
+                        case 2: color = '#228b22'; break; // Tree
+                        case 3: color = '#8b6a4a'; break; // Obstacle
+                        case 4: color = '#3a5a7a'; break; // Water
+                        case 5: color = '#6a6a6a'; break; // Mountain
+                        case 7: color = '#606060'; break; // Castle Wall
+                        case 8: color = '#8b4513'; break; // Hut
+                        default: color = '#ffffff'; // Should not happen
+                    }
+                    ctx.fillStyle = color;
+                    ctx.fillRect(mapX + c * TILE_SIZE * scaleX, mapY + r * TILE_SIZE * scaleY, TILE_SIZE * scaleX + 1, TILE_SIZE * scaleY + 1); // +1 to avoid gaps
+                }
+            }
+
+            // Draw player on mini-map
+            ctx.fillStyle = 'blue';
+            ctx.beginPath();
+            ctx.arc(mapX + player.x * scaleX, mapY + player.y * scaleY, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw enemies on mini-map
+            ctx.fillStyle = 'red';
+            for (const enemy of enemies) {
+                ctx.beginPath();
+                ctx.arc(mapX + enemy.x * scaleX, mapY + enemy.y * scaleY, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw dropped items on mini-map as yellow pings
+            ctx.fillStyle = 'yellow';
+            for (const item of droppedItems) {
+                ctx.beginPath();
+                ctx.arc(mapX + item.x * scaleX, mapY + item.y * scaleY, 2, 0, Math.PI * 2); // Small yellow circle
+                ctx.fill();
+            }
+        }
+
+        /**
+         * Draws a semi-transparent overlay to simulate day/night.
+         */
+        function drawDayNightOverlay() {
+            // Calculate opacity based on sine wave for smooth transition
+            // At 0 and 2*PI (start/end of day), opacity is low (day)
+            // At PI (middle of night), opacity is high (night)
+            const nightOpacity = (Math.sin(gameTime - Math.PI / 2) + 1) / 2 * 0.4; // 0 to 0.4 opacity
+            const nightColor = 'rgba(0, 0, 50, ' + nightOpacity + ')'; // Dark blue tint for night
+
+            ctx.fillStyle = nightColor;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        /**
+         * Clears the canvas.
+         */
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        /**
+         * Updates player position based on keyboard input and applies boundary checks.
+         */
+        function updatePlayerPosition() {
+            let newX = player.x;
+            let newY = player.y;
+
+            let moving = false;
+            if (keys.ArrowUp || keys.w) { newY -= PLAYER_SPEED; moving = true; }
+            if (keys.ArrowDown || keys.s) { newY += PLAYER_SPEED; moving = true; }
+            if (keys.ArrowLeft || keys.a) { newX -= PLAYER_SPEED; moving = true; }
+            if (keys.ArrowRight || keys.d) { newX += PLAYER_SPEED; moving = true; }
+
+            player.isMoving = moving; // Update player's moving state
+
+            // Check for collision with non-walkable tiles
+            const isWalkable = (x, y) => {
+                const col = Math.floor(x / TILE_SIZE);
+                const row = Math.floor(y / TILE_SIZE);
+                if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return false; // Out of bounds
+                const tileType = gameMap[row][col];
+                // Player cannot walk on trees, obstacles, water, mountains, castle walls, or huts
+                return tileType === 0 || tileType === 1; // Grass or Path
+            };
+
+            // Check all four corners of the player for collision
+            const playerLeft = newX - PLAYER_SIZE / 2;
+            const playerRight = newX + PLAYER_SIZE / 2;
+            const playerTop = newY - PLAYER_SIZE / 2;
+            const playerBottom = newY + PLAYER_SIZE / 2;
+
+            const canMoveX = isWalkable(playerLeft, playerTop) && isWalkable(playerRight, playerTop) &&
+                             isWalkable(playerLeft, playerBottom) && isWalkable(playerRight, playerBottom);
+
+            if (canMoveX) {
+                player.x = newX;
+                player.y = newY;
+            } else {
+                // If full movement is blocked, try moving only horizontally or vertically
+                const canMoveHorizontal = isWalkable(newX, player.y - PLAYER_SIZE / 2) && isWalkable(newX, player.y + PLAYER_SIZE / 2);
+                const canMoveVertical = isWalkable(player.x - PLAYER_SIZE / 2, newY) && isWalkable(player.x + PLAYER_SIZE / 2, newY);
+
+                if (canMoveHorizontal) {
+                    player.x = newX;
+                }
+                if (canMoveVertical) {
+                    player.y = newY;
+                }
+            }
+
+            // Clamp player position to world bounds
+            player.x = Math.max(PLAYER_SIZE / 2, Math.min(player.x, MAP_COLS * TILE_SIZE - PLAYER_SIZE / 2));
+            player.y = Math.max(PLAYER_SIZE / 2, Math.min(player.y, MAP_ROWS * TILE_SIZE - PLAYER_SIZE / 2));
+        }
+
+        /**
+         * Draws dropped items on the ground.
+         */
+        function drawDroppedItems() {
+            for (const item of droppedItems) {
+                const itemX = item.x - cameraX;
+                const itemY = item.y - cameraY;
+                const itemSize = 16; // Size of the item icon on the ground
+
+                // Draw a simple background for the item
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(itemX - itemSize / 2, itemY - itemSize / 2, itemSize, itemSize);
+
+                // Draw the item icon based on its type
+                ctx.fillStyle = '#e6b800'; // Gold color for items
+
+                if (Object.values(ARMOR_TYPES).includes(item.type)) {
+                    // Draw a simple armor shape
+                    ctx.fillRect(itemX - itemSize / 4, itemY - itemSize / 2 + 2, itemSize / 2, itemSize - 4);
+                    ctx.fillRect(itemX - itemSize / 2 + 2, itemY - itemSize / 4, itemSize - 4, itemSize / 2);
+                } else if (Object.values(WEAPON_TYPES).includes(item.type)) {
+                    // Draw a simple weapon shape (e.g., a sword)
+                    ctx.fillRect(itemX - 2, itemY - itemSize / 2, 4, itemSize); // Handle
+                    ctx.fillRect(itemX - itemSize / 2, itemY, itemSize, 4); // Blade/Head
+                }
+
+                // Optionally, add rarity glow/border
+                if (item.rarity === 'rare') {
+                    ctx.strokeStyle = '#00bfff'; // Blue glow for rare
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(itemX - itemSize / 2, itemY - itemSize / 2, itemSize, itemSize);
+                } else if (item.rarity === 'legendary') {
+                    ctx.strokeStyle = '#ff00ff'; // Purple glow for legendary
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(itemX - itemSize / 2, itemY - itemSize / 2, itemSize, itemSize);
+                }
+            }
+        }
+
+        /**
+         * Draws the projectile if it's active.
+         */
+        function drawProjectile() {
+            if (projectile) {
+                const projX = projectile.x - cameraX;
+                const projY = projectile.y - cameraY;
+                const projSize = 10; // Size of the projectile
+
+                ctx.fillStyle = (projectile.type === 'fireball') ? '#ff4500' : '#87cefa'; // Red for fireball, blue for ice shard
+                ctx.beginPath();
+                ctx.arc(projX, projY, projSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Add a small glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = (projectile.type === 'fireball') ? '#ff8c00' : '#add8e6';
+                ctx.beginPath();
+                ctx.arc(projX, projY, projSize / 2 + 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+        }
+
+        /**
+         * Draws the melee swing animation.
+         */
+        function drawMeleeSwing() {
+            if (!player.isMeleeAttacking) return;
+
+            const px = player.x - cameraX;
+            const py = player.y - cameraY;
+            const animationProgress = 1 - (player.meleeAnimationTimer / player.meleeAnimationDuration); // 0 to 1
+
+            const arcRadius = player.meleeAttackRange;
+            const startAngle = Math.PI * 1.2; // Start from bottom-left
+            const endAngle = Math.PI * 1.8; // To bottom-right
+
+            ctx.save();
+            ctx.translate(px, py); // Translate to player's center
+
+            // Draw the arc
+            ctx.beginPath();
+            ctx.arc(0, 0, arcRadius, startAngle, endAngle);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = `rgba(255, 255, 0, ${1 - animationProgress})`; // Yellow fading out
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        /**
+         * Main game drawing function.
+         */
+        function drawGame() {
+            clearCanvas();
+            drawEnvironment(); // Draw outdoor environment
+            drawDayNightOverlay(); // Draw day/night overlay after environment
+            drawDroppedItems(); // Draw items on the ground
+            drawEnemy();   // Draw enemies and their indicators
+            drawPlayer();  // Draw player (always centered on screen)
+            drawProjectile(); // Draw projectile if active
+            drawMeleeSwing(); // Draw melee swing animation
+            const messageStartY = drawTopLeftUI(); // Draw top-left UI and get the Y position for messages
+            drawGameMessages(messageStartY); // Draw game messages below the top-left UI
+            drawDamageNumbers(); // Draw floating damage numbers
+            drawActionBar(); // Draw the action bar
+            drawMiniMap(); // Draw the mini-map
+        }
+
+        // --- Event Listeners ---
+        // Keyboard input handling
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) {
+                keys[key] = true;
+                e.preventDefault(); // Prevent default browser actions for arrow keys/WASD
+            }
+            // Handle spell casting and rest with key presses
+            if (key === player.spells.fireball.key) {
+                castSpell('fireball');
+            } else if (key === player.spells.iceShard.key) {
+                castSpell('iceShard');
+            } else if (key === 'e') { // 'e' for melee attack
+                meleeAttack();
+            } else if (key === 'r') { // 'r' for rest
+                rest();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) {
+                keys[key] = false;
+            }
+        });
+
+        // Mouse click handling for on-canvas UI
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Action bar dimensions for click detection
+            const barWidth = 400;
+            const barHeight = 80;
+            const padding = 10;
+            const startX = (CANVAS_WIDTH / 2) - (barWidth / 2);
+            const startY = CANVAS_HEIGHT - barHeight - padding;
+
+            const slotSize = 48;
+            const slotPadding = 8;
+            const orbRadius = ORB_RADIUS; // Use the global constant here
+            // Recalculate slotsStartX based on new centering logic
+            const totalSlotsWidth = (slotSize * 4) + (slotPadding * 3);
+            const slotsStartX = startX + (barWidth / 2) - (totalSlotsWidth / 2);
+            const slotsStartY = startY + (barHeight / 2) - (slotSize / 2);
+
+            const actions = [
+                { name: 'Fireball', key: '1', type: 'spell', spellName: 'fireball', x: slotsStartX, y: slotsStartY },
+                { name: 'Ice Shard', key: '2', type: 'spell', spellName: 'iceShard', x: slotsStartX + slotSize + slotPadding, y: slotsStartY },
+                { name: 'Melee', key: 'E', type: 'melee', x: slotsStartX + (slotSize + slotPadding) * 2, y: slotsStartY },
+                { name: 'Rest', key: 'R', type: 'rest', x: slotsStartX + (slotSize + slotPadding) * 3, y: slotsStartY }
+            ];
+
+            actions.forEach(action => {
+                if (mouseX >= action.x && mouseX <= action.x + slotSize &&
+                    mouseY >= action.y && mouseY <= action.y + slotSize) {
+                    // Clicked on this action item
+                    if (action.type === 'spell') {
+                        castSpell(action.spellName);
+                    } else if (action.type === 'melee') {
+                        meleeAttack();
+                    } else if (action.type === 'rest') {
+                        rest();
+                    }
+                }
+            });
+        });
+
+
+        // --- Game Initialization ---
+        window.onload = function() {
+            // Initial setup messages
+            addGameMessage("Welcome to Wizard's Quest!", 'yellow');
+            addGameMessage("Explore the world and fight!", 'yellow');
+            addGameMessage("Use ARROW keys or WASD to move.", 'yellow');
+            addGameMessage("Press 1 for Fireball, 2 for Ice Shard, E for Melee, R to Rest.", 'yellow');
+            generateLandscape(); // Generate initial landscape
+            // Spawn initial enemies
+            for (let i = 0; i < MAX_ENEMIES; i++) {
+                spawnEnemy();
+            }
+            checkSpellUnlocks(); // Initial check for spell unlocks
+            // Initialize melee attack range based on initial level
+            player.meleeAttackRange = player.baseMeleeAoeRange + (player.meleeLevel - 1) * player.meleeAoePerLevel;
+            gameLoop(); // Start the game loop
+        };
+
+        /**
+         * The main game loop.
+         */
+        function gameLoop() {
+            updatePlayerPosition(); // Update player position based on input
+            updateEnemyMovement(); // Update enemy positions
+            updateGameLogic(); // Update game logic (projectiles, timers, enemy attacks, item pickup)
+            updateCamera(); // Update camera position to follow player
+            drawGame();
+            // Request the next frame
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
